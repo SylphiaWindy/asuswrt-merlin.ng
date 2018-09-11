@@ -1775,3 +1775,7 @@ config RTCONFIG_SW_HW_AUTH
 config RTCONFIG_LIBASUSLOG
 	bool "asuslog library for debug"
 	default n
+
+config RTCONFIG_WIREGURAD_TOOLS
+	bool "Tools for Wireguard - Fast and secure kernelspace VPN (rt-ac86u only)"
+	default n
