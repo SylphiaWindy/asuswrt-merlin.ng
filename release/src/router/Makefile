@@ -1240,6 +1240,9 @@ obj-$(RTCONFIG_SAMBA36X) += libiconv-1.14
 obj-$(RTCONFIG_TELENET) += lanauth
 obj-y += inadyn
 obj-y += libconfuse
+ifeq ($(HND_ROUTER),y)
+obj-$(RTCONFIG_WIREGURAD_TOOLS) += libmnl wireguard_tools
+endif
 
 ifneq ($(HND_ROUTER),y)
 obj-y += cstats
@@ -7100,6 +7103,18 @@ ipset_arm-clean:
 	-@$(MAKE) -C ipset_arm clean
 	-@$(MAKE) -C ipset_arm modules_clean
 	-@rm -rf ipset_arm/Makefile ipset_arm/stamp-h1
+
+wireguard_tools: libmnl
+	cd wireguard/src/tools && CC=$(CC) \
+	CFLAGS="-I$(TOP)/libmnl/staged/usr/include" LDFLAGS="-L$(TOP)/libmnl/staged/usr/lib -lmnl" \
+	make
+
+wireguard_tools-clean:
+	cd wireguard/src/tools && make clean
+
+wireguard_tools-install:
+	install -D wireguard/src/tools/wg $(INSTALLDIR)/wireguard_tools/usr/sbin/wg
+	$(STRIP) $(INSTALLDIR)/wireguard_tools/usr/sbin/wg
 
 nfs-utils/stamp-h1:
 	cd nfs-utils && CPPFLAGS="$(EXTRACFLAGS) -Os" knfsd_cv_bsd_signals=no \

@@ -1782,4 +1782,7 @@ config RTCONFIG_LIBASUSLOG
 
 config RTCONFIG_ETHOBD
 	bool "ethernet onboarding for Aimash."
+	
+config RTCONFIG_WIREGURAD_TOOLS
+	bool "Tools for Wireguard - Fast and secure kernelspace VPN (rt-ac86u only)"
 	default n
