@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+# Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
 
 PKG_CONFIG ?= pkg-config
 PREFIX ?= /usr
@@ -38,7 +38,7 @@ endif
 PLATFORM ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 
 CFLAGS ?= -O3
-CFLAGS += -std=gnu11 -D_GNU_SOURCE
+CFLAGS += -std=gnu99 -D_GNU_SOURCE
 CFLAGS += -Wall -Wextra
 CFLAGS += -MMD -MP
 CFLAGS += -DRUNSTATEDIR="\"$(RUNSTATEDIR)\""
@@ -50,6 +50,9 @@ LIBMNL_CFLAGS := $(shell $(PKG_CONFIG) --cflags libmnl 2>/dev/null)
 LIBMNL_LDLIBS := $(shell $(PKG_CONFIG) --libs libmnl 2>/dev/null || echo -lmnl)
 CFLAGS += $(LIBMNL_CFLAGS)
 LDLIBS += $(LIBMNL_LDLIBS)
+endif
+ifeq ($(PLATFORM),haiku)
+LDLIBS += -lnetwork -lbsd
 endif
 
 ifneq ($(V),1)
@@ -89,6 +92,6 @@ install: wg
 help:
 	@cat INSTALL
 
-.PHONY: clean install check help
+.PHONY: clean install help
 
 -include *.d

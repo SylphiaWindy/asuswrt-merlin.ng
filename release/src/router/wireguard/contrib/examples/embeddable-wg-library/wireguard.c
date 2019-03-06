@@ -1,6 +1,6 @@
-/* SPDX-License-Identifier: LGPL-2.1+
- *
- * Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+// SPDX-License-Identifier: LGPL-2.1+
+/*
+ * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
  * Copyright (C) 2008-2012 Pablo Neira Ayuso <pablo@netfilter.org>.
  */
 
@@ -66,6 +66,7 @@ enum wgpeer_attribute {
 	WGPEER_A_RX_BYTES,
 	WGPEER_A_TX_BYTES,
 	WGPEER_A_ALLOWEDIPS,
+	WGPEER_A_PROTOCOL_VERSION,
 	__WGPEER_A_LAST
 };
 
@@ -87,39 +88,39 @@ enum wgallowedip_attribute {
 #define MNL_ATTR_HDRLEN MNL_ALIGN(sizeof(struct nlattr))
 
 enum mnl_attr_data_type {
-        MNL_TYPE_UNSPEC,
-        MNL_TYPE_U8,
-        MNL_TYPE_U16,
-        MNL_TYPE_U32,
-        MNL_TYPE_U64,
-        MNL_TYPE_STRING,
-        MNL_TYPE_FLAG,
-        MNL_TYPE_MSECS,
-        MNL_TYPE_NESTED,
-        MNL_TYPE_NESTED_COMPAT,
-        MNL_TYPE_NUL_STRING,
-        MNL_TYPE_BINARY,
-        MNL_TYPE_MAX,
+	MNL_TYPE_UNSPEC,
+	MNL_TYPE_U8,
+	MNL_TYPE_U16,
+	MNL_TYPE_U32,
+	MNL_TYPE_U64,
+	MNL_TYPE_STRING,
+	MNL_TYPE_FLAG,
+	MNL_TYPE_MSECS,
+	MNL_TYPE_NESTED,
+	MNL_TYPE_NESTED_COMPAT,
+	MNL_TYPE_NUL_STRING,
+	MNL_TYPE_BINARY,
+	MNL_TYPE_MAX,
 };
 
 #define mnl_attr_for_each(attr, nlh, offset) \
-        for ((attr) = mnl_nlmsg_get_payload_offset((nlh), (offset)); \
-             mnl_attr_ok((attr), (char *)mnl_nlmsg_get_payload_tail(nlh) - (char *)(attr)); \
-             (attr) = mnl_attr_next(attr))
+	for ((attr) = mnl_nlmsg_get_payload_offset((nlh), (offset)); \
+	     mnl_attr_ok((attr), (char *)mnl_nlmsg_get_payload_tail(nlh) - (char *)(attr)); \
+	     (attr) = mnl_attr_next(attr))
 
 #define mnl_attr_for_each_nested(attr, nest) \
-        for ((attr) = mnl_attr_get_payload(nest); \
-             mnl_attr_ok((attr), (char *)mnl_attr_get_payload(nest) + mnl_attr_get_payload_len(nest) - (char *)(attr)); \
-             (attr) = mnl_attr_next(attr))
+	for ((attr) = mnl_attr_get_payload(nest); \
+	     mnl_attr_ok((attr), (char *)mnl_attr_get_payload(nest) + mnl_attr_get_payload_len(nest) - (char *)(attr)); \
+	     (attr) = mnl_attr_next(attr))
 
 #define mnl_attr_for_each_payload(payload, payload_size) \
-        for ((attr) = (payload); \
-             mnl_attr_ok((attr), (char *)(payload) + payload_size - (char *)(attr)); \
-             (attr) = mnl_attr_next(attr))
+	for ((attr) = (payload); \
+	     mnl_attr_ok((attr), (char *)(payload) + payload_size - (char *)(attr)); \
+	     (attr) = mnl_attr_next(attr))
 
-#define MNL_CB_ERROR            -1
-#define MNL_CB_STOP              0
-#define MNL_CB_OK                1
+#define MNL_CB_ERROR	-1
+#define MNL_CB_STOP	0
+#define MNL_CB_OK	1
 
 typedef int (*mnl_attr_cb_t)(const struct nlattr *attr, void *data);
 typedef int (*mnl_cb_t)(const struct nlmsghdr *nlh, void *data);
@@ -903,15 +904,6 @@ static int add_next_to_inflatable_buffer(struct inflatable_buffer *buffer)
 	return 0;
 }
 
-static void warn_unrecognized(const char *which)
-{
-	static bool once = false;
-	if (once)
-		return;
-	once = true;
-	fprintf(stderr, "Warning: one or more unrecognized %s attributes\n", which);
-}
-
 static int parse_linkinfo(const struct nlattr *attr, void *data)
 {
 	struct inflatable_buffer *buffer = data;
@@ -998,8 +990,15 @@ another:
 		goto cleanup;
 	}
 	if ((len = mnl_cb_run(rtnl_buffer, len, seq, portid, read_devices_cb, buffer)) < 0) {
-		ret = -errno;
-		goto cleanup;
+		/* Netlink returns NLM_F_DUMP_INTR if the set of all tunnels changed
+		 * during the dump. That's unfortunate, but is pretty common on busy
+		 * systems that are adding and removing tunnels all the time. Rather
+		 * than retrying, potentially indefinitely, we just work with the
+		 * partial results. */
+		if (errno != EINTR) {
+			ret = -errno;
+			goto cleanup;
+		}
 	}
 	if (len == MNL_CB_OK + 1)
 		goto another;
@@ -1074,7 +1073,6 @@ cleanup:
 int wg_set_device(wg_device *dev)
 {
 	int ret = 0;
-	size_t i, j;
 	wg_peer *peer = NULL;
 	wg_allowedip *allowedip = NULL;
 	struct nlattr *peers_nest, *peer_nest, *allowedips_nest, *allowedip_nest;
@@ -1107,10 +1105,10 @@ again:
 		goto send;
 	peers_nest = peer_nest = allowedips_nest = allowedip_nest = NULL;
 	peers_nest = mnl_attr_nest_start(nlh, WGDEVICE_A_PEERS);
-	for (i = 0, peer = peer ? peer : dev->first_peer; peer; peer = peer->next_peer) {
+	for (peer = peer ? peer : dev->first_peer; peer; peer = peer->next_peer) {
 		uint32_t flags = 0;
 
-		peer_nest = mnl_attr_nest_start_check(nlh, MNL_SOCKET_BUFFER_SIZE, i++);
+		peer_nest = mnl_attr_nest_start_check(nlh, MNL_SOCKET_BUFFER_SIZE, 0);
 		if (!peer_nest)
 			goto toobig_peers;
 		if (!mnl_attr_put_check(nlh, MNL_SOCKET_BUFFER_SIZE, WGPEER_A_PUBLIC_KEY, sizeof(peer->public_key), peer->public_key))
@@ -1146,8 +1144,8 @@ again:
 			allowedips_nest = mnl_attr_nest_start_check(nlh, MNL_SOCKET_BUFFER_SIZE, WGPEER_A_ALLOWEDIPS);
 			if (!allowedips_nest)
 				goto toobig_allowedips;
-			for (j = 0; allowedip; allowedip = allowedip->next_allowedip) {
-				allowedip_nest = mnl_attr_nest_start_check(nlh, MNL_SOCKET_BUFFER_SIZE, j++);
+			for (; allowedip; allowedip = allowedip->next_allowedip) {
+				allowedip_nest = mnl_attr_nest_start_check(nlh, MNL_SOCKET_BUFFER_SIZE, 0);
 				if (!allowedip_nest)
 					goto toobig_allowedips;
 				if (!mnl_attr_put_u16_check(nlh, MNL_SOCKET_BUFFER_SIZE, WGALLOWEDIP_A_FAMILY, allowedip->family))
@@ -1227,8 +1225,6 @@ static int parse_allowedip(const struct nlattr *attr, void *data)
 		if (!mnl_attr_validate(attr, MNL_TYPE_U8))
 			allowedip->cidr = mnl_attr_get_u8(attr);
 		break;
-	default:
-		warn_unrecognized("netlink");
 	}
 
 	return MNL_CB_OK;
@@ -1320,8 +1316,6 @@ static int parse_peer(const struct nlattr *attr, void *data)
 		break;
 	case WGPEER_A_ALLOWEDIPS:
 		return mnl_attr_parse_nested(attr, parse_allowedips, peer);
-	default:
-		warn_unrecognized("netlink");
 	}
 
 	return MNL_CB_OK;
@@ -1390,8 +1384,6 @@ static int parse_device(const struct nlattr *attr, void *data)
 		break;
 	case WGDEVICE_A_PEERS:
 		return mnl_attr_parse_nested(attr, parse_peers, device);
-	default:
-		warn_unrecognized("netlink");
 	}
 
 	return MNL_CB_OK;
@@ -1696,7 +1688,7 @@ static void invert(fe o, const fe i)
 	memzero_explicit(c, sizeof(c));
 }
 
-static void normalize_key(uint8_t *z)
+static void clamp_key(uint8_t *z)
 {
 	z[31] = (z[31] & 127) | 64;
 	z[0] &= 248;
@@ -1709,7 +1701,7 @@ void wg_generate_public_key(wg_key public_key, const wg_key private_key)
 	fe a = { 1 }, b = { 9 }, c = { 0 }, d = { 1 }, e, f;
 
 	memcpy(z, private_key, sizeof(z));
-	normalize_key(z);
+	clamp_key(z);
 
 	for (i = 254; i >= 0; --i) {
 		r = (z[i >> 3] >> (i & 7)) & 1;
@@ -1753,22 +1745,27 @@ void wg_generate_public_key(wg_key public_key, const wg_key private_key)
 void wg_generate_private_key(wg_key private_key)
 {
 	wg_generate_preshared_key(private_key);
-	normalize_key(private_key);
+	clamp_key(private_key);
 }
 
 void wg_generate_preshared_key(wg_key preshared_key)
 {
 	ssize_t ret;
+	size_t i;
 	int fd;
-
-#if defined(__NR_getrandom)
-	ret = syscall(__NR_getrandom, preshared_key, sizeof(wg_key), 0);
-	if (ret == sizeof(wg_key))
+#if defined(__OpenBSD__) || (defined(__APPLE__) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_12) || (defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25)))
+	if (!getentropy(preshared_key, sizeof(wg_key)))
+		return;
+#endif
+#if defined(__NR_getrandom) && defined(__linux__)
+	if (syscall(__NR_getrandom, preshared_key, sizeof(wg_key), 0) == sizeof(wg_key))
 		return;
 #endif
 	fd = open("/dev/urandom", O_RDONLY);
 	assert(fd >= 0);
-	ret = read(fd, preshared_key, sizeof(wg_key));
+	for (i = 0; i < sizeof(wg_key); i += ret) {
+		ret = read(fd, preshared_key + i, sizeof(wg_key) - i);
+		assert(ret > 0);
+	}
 	close(fd);
-	assert(ret == sizeof(wg_key));
 }

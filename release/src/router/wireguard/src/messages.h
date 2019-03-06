@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+ * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
  */
 
 #ifndef _WG_MESSAGES_H
@@ -15,19 +15,19 @@
 #include <linux/skbuff.h>
 
 enum noise_lengths {
-	NOISE_PUBLIC_KEY_LEN = CURVE25519_POINT_SIZE,
-	NOISE_SYMMETRIC_KEY_LEN = CHACHA20POLY1305_KEYLEN,
+	NOISE_PUBLIC_KEY_LEN = CURVE25519_KEY_SIZE,
+	NOISE_SYMMETRIC_KEY_LEN = CHACHA20POLY1305_KEY_SIZE,
 	NOISE_TIMESTAMP_LEN = sizeof(u64) + sizeof(u32),
-	NOISE_AUTHTAG_LEN = CHACHA20POLY1305_AUTHTAGLEN,
-	NOISE_HASH_LEN = BLAKE2S_OUTBYTES
+	NOISE_AUTHTAG_LEN = CHACHA20POLY1305_AUTHTAG_SIZE,
+	NOISE_HASH_LEN = BLAKE2S_HASH_SIZE
 };
 
-#define noise_encrypted_len(plain_len) (plain_len + NOISE_AUTHTAG_LEN)
+#define noise_encrypted_len(plain_len) ((plain_len) + NOISE_AUTHTAG_LEN)
 
 enum cookie_values {
 	COOKIE_SECRET_MAX_AGE = 2 * 60,
 	COOKIE_SECRET_LATENCY = 5,
-	COOKIE_NONCE_LEN = XCHACHA20POLY1305_NONCELEN,
+	COOKIE_NONCE_LEN = XCHACHA20POLY1305_NONCE_SIZE,
 	COOKIE_LEN = 16
 };
 
@@ -109,7 +109,7 @@ struct message_data {
 	u8 encrypted_data[];
 };
 
-#define message_data_len(plain_len)                                            \
+#define message_data_len(plain_len) \
 	(noise_encrypted_len(plain_len) + sizeof(struct message_data))
 
 enum message_alignments {
@@ -117,10 +117,10 @@ enum message_alignments {
 	MESSAGE_MINIMUM_LENGTH = message_data_len(0)
 };
 
-#define SKB_HEADER_LEN                                                         \
-	(max(sizeof(struct iphdr), sizeof(struct ipv6hdr)) +                   \
+#define SKB_HEADER_LEN                                       \
+	(max(sizeof(struct iphdr), sizeof(struct ipv6hdr)) + \
 	 sizeof(struct udphdr) + NET_SKB_PAD)
-#define DATA_PACKET_HEAD_ROOM                                                  \
+#define DATA_PACKET_HEAD_ROOM \
 	ALIGN(sizeof(struct message_data) + SKB_HEADER_LEN, 4)
 
 enum { HANDSHAKE_DSCP = 0x88 /* AF41, plus 00 ECN */ };

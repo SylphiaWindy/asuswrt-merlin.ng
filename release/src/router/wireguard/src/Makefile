@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+# Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PREFIX ?= /usr
 DESTDIR ?=
 SRCDIR ?= $(PREFIX)/src
 DKMSDIR ?= $(SRCDIR)/wireguard
+DEPMOD ?= depmod
 
 PWD := $(shell pwd)
 
@@ -44,15 +45,12 @@ clean:
 
 module-install:
 	@$(MAKE) -C $(KERNELDIR) M=$(PWD) modules_install
-	depmod -a
+	$(DEPMOD) -a
 
-install:
-	@$(MAKE) -C $(KERNELDIR) M=$(PWD) modules_install
-	depmod -a
-	@$(MAKE) -C tools install
+install: module-install tools-install
 
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
-DKMS_SOURCES := version.h Makefile Kbuild Kconfig dkms.conf $(filter-out version.h wireguard.mod.c,$(wildcard *.c *.h selftest/*.h uapi/*.h)) $(call rwildcard,crypto/,*.c *.h *.S *.include) $(call rwildcard,compat/,*.c *.h *.include)
+DKMS_SOURCES := version.h Makefile Kbuild Kconfig dkms.conf $(filter-out version.h wireguard.mod.c tools/% tests/%,$(call rwildcard,,*.c *.h *.S *.pl *.include))
 dkms-install: $(DKMS_SOURCES)
 	@$(foreach f,$(DKMS_SOURCES),install -v -m0644 -D $(f) $(DESTDIR)$(DKMSDIR)/$(f);)
 
@@ -62,8 +60,11 @@ tools:
 tools-debug:
 	@$(MAKE) -C tools V=1 DEBUG_TOOLS=y
 
+tools-install:
+	@$(MAKE) -C tools install
+
 style:
-	$(KERNELDIR)/scripts/checkpatch.pl -f --max-line-length=4000 --codespell --color=always $(filter-out wireguard.mod.c,$(wildcard *.c)) $(wildcard *.h)
+	$(KERNELDIR)/scripts/checkpatch.pl -f --max-line-length=4000 --codespell --color=always $(filter-out wireguard.mod.c,$(wildcard *.c)) $(wildcard *.h) $(wildcard selftest/*.c)
 
 check: clean
 	scan-build --html-title=WireGuard -maxloop 100 --view --keep-going $(MAKE) module tools CONFIG_WIREGUARD_DEBUG=y C=2 CF="-D__CHECK_ENDIAN__"
@@ -76,4 +77,4 @@ cloc:
 
 -include tests/debug.mk
 
-.PHONY: all module module-debug module-install tools install dkms-install clean core-cloc check style version.h dkms.conf
+.PHONY: all module module-debug module-install tools tools-install install dkms-install clean core-cloc check style version.h dkms.conf
