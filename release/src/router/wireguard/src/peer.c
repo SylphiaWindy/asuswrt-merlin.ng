@@ -7,7 +7,7 @@
 #include "device.h"
 #include "queueing.h"
 #include "timers.h"
-#include "hashtables.h"
+#include "peerlookup.h"
 #include "noise.h"
 
 #include <linux/kref.h>
@@ -56,9 +56,7 @@ struct wg_peer *wg_peer_create(struct wg_device *wg,
 	rwlock_init(&peer->endpoint_lock);
 	kref_init(&peer->refcount);
 	skb_queue_head_init(&peer->staged_packet_queue);
-	atomic64_set(&peer->last_sent_handshake,
-		     ktime_get_boot_fast_ns() -
-			     (u64)(REKEY_TIMEOUT + 1) * NSEC_PER_SEC);
+	wg_noise_reset_last_sent_handshake(&peer->last_sent_handshake);
 	set_bit(NAPI_STATE_NO_BUSY_POLL, &peer->napi.state);
 	netif_napi_add(wg->dev, &peer->napi, wg_packet_rx_poll,
 		       NAPI_POLL_WEIGHT);
@@ -99,7 +97,7 @@ static void peer_make_dead(struct wg_peer *peer)
 	/* Mark as dead, so that we don't allow jumping contexts after. */
 	WRITE_ONCE(peer->is_dead, true);
 
-	/* The caller must now synchronize_rcu_bh() for this to take effect. */
+	/* The caller must now synchronize_rcu() for this to take effect. */
 }
 
 static void peer_remove_after_dead(struct wg_peer *peer)
@@ -171,14 +169,14 @@ void wg_peer_remove(struct wg_peer *peer)
 	lockdep_assert_held(&peer->device->device_update_lock);
 
 	peer_make_dead(peer);
-	synchronize_rcu_bh();
+	synchronize_rcu();
 	peer_remove_after_dead(peer);
 }
 
 void wg_peer_remove_all(struct wg_device *wg)
 {
-	struct list_head dead_peers = LIST_HEAD_INIT(dead_peers);
 	struct wg_peer *peer, *temp;
+	LIST_HEAD(dead_peers);
 
 	lockdep_assert_held(&wg->device_update_lock);
 
@@ -189,7 +187,7 @@ void wg_peer_remove_all(struct wg_device *wg)
 		peer_make_dead(peer);
 		list_add_tail(&peer->peer_list, &dead_peers);
 	}
-	synchronize_rcu_bh();
+	synchronize_rcu();
 	list_for_each_entry_safe(peer, temp, &dead_peers, peer_list)
 		peer_remove_after_dead(peer);
 }
@@ -228,7 +226,7 @@ static void kref_release(struct kref *refcount)
 	wg_packet_purge_staged_packets(peer);
 
 	/* Free the memory used. */
-	call_rcu_bh(&peer->rcu, rcu_release);
+	call_rcu(&peer->rcu, rcu_release);
 }
 
 void wg_peer_put(struct wg_peer *peer)

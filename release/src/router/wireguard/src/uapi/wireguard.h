@@ -25,23 +25,23 @@
  *
  *    WGDEVICE_A_IFINDEX: NLA_U32
  *    WGDEVICE_A_IFNAME: NLA_NUL_STRING, maxlen IFNAMESIZ - 1
- *    WGDEVICE_A_PRIVATE_KEY: len WG_KEY_LEN
- *    WGDEVICE_A_PUBLIC_KEY: len WG_KEY_LEN
+ *    WGDEVICE_A_PRIVATE_KEY: NLA_EXACT_LEN, len WG_KEY_LEN
+ *    WGDEVICE_A_PUBLIC_KEY: NLA_EXACT_LEN, len WG_KEY_LEN
  *    WGDEVICE_A_LISTEN_PORT: NLA_U16
  *    WGDEVICE_A_FWMARK: NLA_U32
  *    WGDEVICE_A_PEERS: NLA_NESTED
  *        0: NLA_NESTED
- *            WGPEER_A_PUBLIC_KEY: len WG_KEY_LEN
- *            WGPEER_A_PRESHARED_KEY: len WG_KEY_LEN
- *            WGPEER_A_ENDPOINT: struct sockaddr_in or struct sockaddr_in6
+ *            WGPEER_A_PUBLIC_KEY: NLA_EXACT_LEN, len WG_KEY_LEN
+ *            WGPEER_A_PRESHARED_KEY: NLA_EXACT_LEN, len WG_KEY_LEN
+ *            WGPEER_A_ENDPOINT: NLA_MIN_LEN(struct sockaddr), struct sockaddr_in or struct sockaddr_in6
  *            WGPEER_A_PERSISTENT_KEEPALIVE_INTERVAL: NLA_U16
- *            WGPEER_A_LAST_HANDSHAKE_TIME: struct __kernel_timespec
+ *            WGPEER_A_LAST_HANDSHAKE_TIME: NLA_EXACT_LEN, struct __kernel_timespec
  *            WGPEER_A_RX_BYTES: NLA_U64
  *            WGPEER_A_TX_BYTES: NLA_U64
  *            WGPEER_A_ALLOWEDIPS: NLA_NESTED
  *                0: NLA_NESTED
  *                    WGALLOWEDIP_A_FAMILY: NLA_U16
- *                    WGALLOWEDIP_A_IPADDR: struct in_addr or struct in6_addr
+ *                    WGALLOWEDIP_A_IPADDR: NLA_MIN_LEN(struct in_addr), struct in_addr or struct in6_addr
  *                    WGALLOWEDIP_A_CIDR_MASK: NLA_U8
  *                0: NLA_NESTED
  *                    ...
@@ -142,7 +142,8 @@ enum wg_cmd {
 #define WG_CMD_MAX (__WG_CMD_MAX - 1)
 
 enum wgdevice_flag {
-	WGDEVICE_F_REPLACE_PEERS = 1U << 0
+	WGDEVICE_F_REPLACE_PEERS = 1U << 0,
+	__WGDEVICE_F_ALL = WGDEVICE_F_REPLACE_PEERS
 };
 enum wgdevice_attribute {
 	WGDEVICE_A_UNSPEC,
@@ -160,7 +161,8 @@ enum wgdevice_attribute {
 
 enum wgpeer_flag {
 	WGPEER_F_REMOVE_ME = 1U << 0,
-	WGPEER_F_REPLACE_ALLOWEDIPS = 1U << 1
+	WGPEER_F_REPLACE_ALLOWEDIPS = 1U << 1,
+	__WGPEER_F_ALL = WGPEER_F_REMOVE_ME | WGPEER_F_REPLACE_ALLOWEDIPS
 };
 enum wgpeer_attribute {
 	WGPEER_A_UNSPEC,
