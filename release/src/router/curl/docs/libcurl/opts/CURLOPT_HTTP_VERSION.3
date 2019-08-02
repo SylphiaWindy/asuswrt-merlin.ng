@@ -5,7 +5,7 @@
 .\" *                            | (__| |_| |  _ <| |___
 .\" *                             \___|\___/|_| \_\_____|
 .\" *
-.\" * Copyright (C) 1998 - 2017, Daniel Stenberg, <daniel@haxx.se>, et al.
+.\" * Copyright (C) 1998 - 2018, Daniel Stenberg, <daniel@haxx.se>, et al.
 .\" *
 .\" * This software is licensed as described in the file COPYING, which
 .\" * you should have received as part of this distribution. The terms
@@ -20,7 +20,7 @@
 .\" *
 .\" **************************************************************************
 .\"
-.TH CURLOPT_HTTP_VERSION 3 "April 17, 2018" "libcurl 7.60.0" "curl_easy_setopt options"
+.TH CURLOPT_HTTP_VERSION 3 "June 25, 2019" "libcurl 7.65.3" "curl_easy_setopt options"
 
 .SH NAME
 CURLOPT_HTTP_VERSION \- specify HTTP protocol version to use
@@ -30,9 +30,7 @@ CURLOPT_HTTP_VERSION \- specify HTTP protocol version to use
 CURLcode curl_easy_setopt(CURL *handle, CURLOPT_HTTP_VERSION, long version);
 .SH DESCRIPTION
 Pass \fIversion\fP a long, set to one of the values described below. They ask
-libcurl to use the specific HTTP versions. This is not sensible to do unless
-you have a good reason. You have to set this option if you want to use
-libcurl's HTTP/2 support.
+libcurl to use the specific HTTP versions.
 
 Note that the HTTP version is just a request. libcurl will still prioritize to
 re-use an existing connection so it might then re-use a connection using a
@@ -61,7 +59,9 @@ prior knowledge that the server supports HTTP/2 straight away. HTTPS requests
 will still do HTTP/2 the standard way with negotiated protocol version in the
 TLS handshake. (Added in 7.49.0)
 .SH DEFAULT
-CURL_HTTP_VERSION_NONE
+Since curl 7.62.0: CURL_HTTP_VERSION_2TLS
+
+Before that: CURL_HTTP_VERSION_1_1
 .SH PROTOCOLS
 HTTP
 .SH EXAMPLE
@@ -83,3 +83,4 @@ Along with HTTP
 Returns CURLE_OK if HTTP is supported, and CURLE_UNKNOWN_OPTION if not.
 .SH "SEE ALSO"
 .BR CURLOPT_SSLVERSION "(3), " CURLOPT_HTTP200ALIASES "(3), "
+.BR CURLOPT_HTTP09_ALLOWED "(3), "

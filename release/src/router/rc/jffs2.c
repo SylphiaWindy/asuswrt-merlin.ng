@@ -201,12 +201,14 @@ void format_mount_2nd_jffs2(void)
 
 	notice_set("2nd_jffs", format ? "Formatted" : "Loaded");
 
+/* obsolete, keep for merge
 	if (((p = nvram_get("jffs2_exec")) != NULL) && (*p != 0)) {
 		chdir(SECOND_JFFS2_PATH);
 		system(p);
 		chdir("/");
 	}
 	run_userfile(SECOND_JFFS2_PATH, ".asusrouter", SECOND_JFFS2_PATH, 3);
+*/
 }
 #endif
 /* */
@@ -336,11 +338,13 @@ void start_jffs2(void)
 	notice_set("jffs", format ? "Formatted" : "Loaded");
 	jffs2_fail = 0;
 
+/* obsolete, keep for merge
 	if (((p = nvram_get("jffs2_exec")) != NULL) && (*p != 0)) {
 		chdir("/jffs");
 		system(p);
 		chdir("/");
 	}
+*/
 
 #ifdef HND_ROUTER
 #ifdef RTCONFIG_JFFS_NVRAM
@@ -350,10 +354,12 @@ void start_jffs2(void)
 #endif
 #endif
 
+/* obsolete, keep for merge
 	run_userfile("/jffs", ".asusrouter", "/jffs", 3);
+*/
 
 #ifdef CONFIG_BCMWL5
-#if defined(RTAC68U) || defined(RTAC88U) || defined(RTAC3100) || defined(RTAC5300) || defined(RTAC86U)	// kludge
+#if !defined(RTAC3200) && !defined(RTAC56U) && !defined(RTAC87U)	//kludge
 	check_asus_jffs();
 #endif
 #endif
@@ -361,6 +367,8 @@ void start_jffs2(void)
 	if (!check_if_dir_exist("/jffs/scripts/")) mkdir("/jffs/scripts/", 0755);
 	if (!check_if_dir_exist("/jffs/configs/")) mkdir("/jffs/configs/", 0755);
 	if (!check_if_dir_exist(UPLOAD_CERT_FOLDER)) mkdir(UPLOAD_CERT_FOLDER, 0600);
+
+	adjust_jffs_content();
 }
 
 void stop_jffs2(int stop)

@@ -388,6 +388,7 @@ page_default_redirect(int fromapp_flag, char* url)
 void
 send_login_page(int fromapp_flag, int error_status, char* url, char* file, int lock_time, int logintry)
 {
+	HTTPD_DBG("error_status = %d\n", error_status);
 	char inviteCode[256]={0};
 	char buf[128] = {0};
 	//char url_tmp[64]={0};
@@ -753,8 +754,23 @@ void set_referer_host(void)
 			memset(referer_host, 0, sizeof(referer_host));
 			snprintf(referer_host,sizeof(referer_host),"%s:%d",lan_ipaddr, port);
 		}
+#ifdef RTAC68U
+	} else if (is_dpsta_repeater() && nvram_get_int("re_mode") == 0
+		&& !strncmp("repeater.asus.com", host_name, strlen("repeater.asus.com")) && *(host_name + strlen("repeater.asus.com")) == ':' && (port = atoi(host_name + strlen("repeater.asus.com") + 1)) > 0 && port < 65536){//transfer https domain to ip
+		if(port == 80)
+			strlcpy(referer_host, lan_ipaddr, sizeof(referer_host));
+		else{
+			memset(referer_host, 0, sizeof(referer_host));
+			snprintf(referer_host,sizeof(referer_host),"%s:%d",lan_ipaddr, port);
+		}
+#endif
 	}else if(!strcmp(DUT_DOMAIN_NAME, host_name))	//transfer http domain to ip
 		strlcpy(referer_host, lan_ipaddr, sizeof(referer_host));
+#ifdef RTAC68U
+	else if (is_dpsta_repeater() && nvram_get_int("re_mode") == 0
+		&& !strcmp("repeater.asus.com", host_name))   //transfer http domain to ip
+		strlcpy(referer_host, lan_ipaddr, sizeof(referer_host));
+#endif
 	else if(!strncmp(lan_ipaddr, host_name, ip_len) && *(host_name + ip_len) == ':' && (port = atoi(host_name + ip_len + 1)) == 80)	//filter send hostip:80
 		strlcpy(referer_host, lan_ipaddr, sizeof(referer_host));
 	else if(nvram_match("x_Setting", "0"))
@@ -813,7 +829,6 @@ int wave_handle_flag(char *url)
 }
 #endif
 
-int auto_set_lang = 0; //Prevent to check language every request
 static void
 handle_request(void)
 {
@@ -875,9 +890,8 @@ handle_request(void)
 			break;
 		}
 #ifdef TRANSLATE_ON_FLY
-#if !defined(RTAC88U) && !defined(RTAC87U)	// kludge
 		else if ( strncasecmp( cur, "Accept-Language:", 16) == 0 ) {
-			if(change_preferred_lang()){
+			if(change_preferred_lang(0)){
 				char *p;
 				struct language_table *pLang;
 				char lang_buf[256];
@@ -885,7 +899,7 @@ handle_request(void)
 				alang = &cur[16];
 				strncpy(lang_buf, alang, sizeof(lang_buf)-1);
 				p = lang_buf;
-				while (p != NULL)
+				while (p != NULL && (p - lang_buf) < sizeof(lang_buf))
 				{
 					p = strtok (p, "\r\n ,;");
 					if (p == NULL)  break;
@@ -928,7 +942,7 @@ handle_request(void)
 					nvram_set("preferred_lang", Accept_Language);
 				}
 
-				auto_set_lang = 1; //Prevent to check language every request
+				change_preferred_lang(1);
 			}
 
 			#ifdef RTCONFIG_DSL_TCLINUX
@@ -954,99 +968,6 @@ handle_request(void)
 			}
 			#endif
 		}
-#else // kludge
-		else if ( strncasecmp( cur, "Accept-Language:",16) ==0) {
-			char *p;
-			struct language_table *pLang;
-			char lang_buf[256];
-			memset(lang_buf, 0, sizeof(lang_buf));
-			alang = &cur[16];
-			strncpy(lang_buf, alang, sizeof(lang_buf)-1);
-			p = lang_buf;
-			while (p != NULL)
-			{
-				p = strtok (p, "\r\n ,;");
-				if (p == NULL)  break;
-				//2008.11 magic{
-				int i, len=strlen(p);
-
-				for (i=0;i<len;++i)
-					if (isupper(p[i])) {
-						p[i]=tolower(p[i]);
-					}
-
-				//2008.11 magic}
-				for (pLang = language_tables; pLang->Lang != NULL; ++pLang)
-				{
-					if (strcasecmp(p, pLang->Lang)==0)
-					{
-						char dictname[32];
-
-						if (!check_lang_support(pLang->Target_Lang))
-							continue;
-						snprintf(dictname,sizeof(dictname),"%s.dict", pLang->Target_Lang);
-						if(!check_if_file_exist(dictname))
-						{
-							//_dprintf("language(%s) is not supported!!\n", pLang->Target_Lang);
-							continue;
-						}
-						snprintf(Accept_Language,sizeof(Accept_Language),"%s",pLang->Target_Lang);
-						if (is_firsttime() && nvram_match("ui_Setting", "0")) {
-							_dprintf("%s", Accept_Language);
-							nvram_set("ui_Setting", "1");
-							nvram_set("preferred_lang", Accept_Language);
-							
-
-#if defined(RTCONFIG_TCODE)
-							if (find_word(nvram_safe_get("rc_support"), "tcode") && nvram_get("territory_code")){
-								if (!strncmp(nvram_get("territory_code"), "CN", 2))
-									nvram_set("preferred_lang", "CN");
-							}
-#endif
-						#ifdef RTCONFIG_DSL_TCLINUX
-							if(!strcmp(Accept_Language, "CZ") || !strcmp(Accept_Language, "DE")) {
-								int do_restart = 0;
-								if( nvram_match("dslx_annex", "4")
-									&& nvram_match("dsltmp_adslsyncsts", "down")
-								){
-									_dprintf("DSL: auto switch to annex b/j\n");
-									nvram_set("dslx_annex", "6");
-									do_restart = 1;
-								}
-								if(!strcmp(Accept_Language, "DE")
-									&& nvram_match("dslx_vdsl_profile", "0")) {
-									_dprintf("DSL: auto switch to 17a multi mode\n");
-									nvram_set("dslx_vdsl_profile", "1");
-									do_restart = 1;
-								}
-								if (do_restart)
-									notify_rc("restart_dsl_setting");
-							}
-						#endif
-						}
-
-						break;
-					}
-				}
-
-				if (Accept_Language[0] != 0) {
-					break;
-				}
-				p+=strlen(p)+1;
-			}
-
-			if (Accept_Language[0] == 0) {
-				// If all language setting of user's browser are not supported, use English.
-				//printf ("Auto detect language failed. Use English.\n");
-				strcpy (Accept_Language, "EN");
-
-				// 2008.10 magic {
-				if (is_firsttime())
-					nvram_set("preferred_lang", "EN");
-				// 2008.10 magic }
-			}
-		}
-#endif
 #endif
 		else if ( strncasecmp( cur, "Authorization:", 14 ) == 0 )
 		{
@@ -1061,6 +982,7 @@ handle_request(void)
 			cp += strspn( cp, " \t" );
 			useragent = cp;
 			cur = cp + strlen(cp) + 1;
+			HTTPD_DBG("useragent: %s\n", useragent);
 		}
 		else if ( strncasecmp( cur, "Cookie:", 7 ) == 0 )
 		{
@@ -1201,6 +1123,7 @@ handle_request(void)
 // _dprintf("[httpd] file: %s\n", file);
         }
 #endif
+        HTTPD_DBG("file = %s\n", file);
 	mime_exception = 0;
 	do_referer = 0;
 
@@ -1311,6 +1234,7 @@ handle_request(void)
 				else {
 					if(do_referer&CHECK_REFERER){
 						referer_result = referer_check(referer, fromapp);
+						HTTPD_DBG("referer_result = %d\n", referer_result);
 						if(referer_result != 0){
 							if(strcasecmp(method, "post") == 0 && handler->input)	//response post request
 								while (cl--) (void)fgetc(conn_fp);
@@ -1322,6 +1246,7 @@ handle_request(void)
 					}
 					handler->auth(auth_userid, auth_passwd, auth_realm);
 					auth_result = auth_check(auth_realm, authorization, url, file, cookies, fromapp);
+					HTTPD_DBG("auth_result = %d\n", auth_result);
 					if (auth_result != 0)
 					{
 						if(strcasecmp(method, "post") == 0 && handler->input)	//response post request
@@ -1405,7 +1330,11 @@ handle_request(void)
 #if defined(RTCONFIG_IFTTT) || defined(RTCONFIG_ALEXA)
 					&& !strstr(file, "asustitle.png")
 #endif
-					&& !strstr(file,"cert_key.tar")){
+					&& !strstr(file,"cert_key.tar")
+#ifdef RTCONFIG_OPENVPN
+					&& !strstr(file, "server_ovpn.cert")
+#endif
+					){
 				send_error( 404, "Not Found", (char*) 0, "File not found." );
 				return;
 			}
@@ -1581,8 +1510,12 @@ char *config_model_name(char *source, char *find,  char *rep){
    int length=strlen(source)+1;
    int gap=0;
 
+   char *result_t = NULL;
    char *result = (char*)malloc(sizeof(char) * length);
-   strcpy(result, source);
+   if(result == NULL)
+   	return NULL;
+   else
+   	strcpy(result, source);
 
    char *former=source;
    char *location= strstr(former, find);
@@ -1593,7 +1526,12 @@ char *config_model_name(char *source, char *find,  char *rep){
        result[gap]='\0';
 
        length+=(rep_L-find_L);
-       result = (char*)realloc(result, length * sizeof(char));
+       result_t = (char*)realloc(result, length * sizeof(char));
+       if(result_t == NULL){
+       	free(result);
+       	return NULL;
+       }else
+       	result = result_t;
        strcat(result, rep);
        gap+=rep_L;
 
@@ -1613,39 +1551,6 @@ char *config_model_name(char *source, char *find,  char *rep){
  *     <0:	invalid parameter.
  *     >0:	lang can be supported.
  */
-#if defined(RTAC88U) || defined(RTAC87U)	// kludge
-int check_lang_support(char *lang)
-{
-	int r = 1;
-
-	if (!lang)
-		return -1;
-
-#if defined(RTCONFIG_TCODE)
-	if (!find_word(nvram_safe_get("rc_support"), "tcode") || !nvram_get("territory_code"))
-		return 1;
-	if (!strncmp(nvram_get("territory_code"), "UK", 2) ||
-	    !strncmp(nvram_get("territory_code"), "NE", 2)) {
-		if (!strcmp(lang, "DA") || !strcmp(lang, "EN") ||
-		    !strcmp(lang, "FI") || !strcmp(lang, "NO") ||
-		    !strcmp(lang, "SV")) {
-			r = 1;
-		} else {
-			r = 0;
-		}
-	} else {
-		if (!strcmp(lang, "DA") || !strcmp(lang, "FI") ||
-		    !strcmp(lang, "NO") || !strcmp(lang, "SV")) {
-			r = 0;
-		} else {
-			r = 1;
-		}
-	}
-#endif
-
-	return r;
-}
-#endif
 
 #ifdef RTCONFIG_AUTODICT
 int
@@ -1667,7 +1572,7 @@ load_dictionary (char *lang, pkw_t pkw)
 #endif  // RELOAD_DICT
 #ifdef RTCONFIG_DYN_DICT_NAME
 	char *dyn_dict_buf;
-	char *dyn_dict_buf_new;
+	char *dyn_dict_buf_new=NULL;
 #endif
 
 //printf ("lang=%s\n", lang);
@@ -1730,12 +1635,15 @@ load_dictionary (char *lang, pkw_t pkw)
 
 	free(dyn_dict_buf);
 
-	dict_size = sizeof(char) * strlen(dyn_dict_buf_new);
-	pkw->buf = (unsigned char *) (q = malloc (dict_size));
-	strcpy(pkw->buf, dyn_dict_buf_new);
-	free(dyn_dict_buf_new);
+	if(dyn_dict_buf_new){
+		dict_size = sizeof(char) * strlen(dyn_dict_buf_new);
+		pkw->buf = (unsigned char *) (q = malloc (dict_size));
+		strcpy(pkw->buf, dyn_dict_buf_new);
+		free(dyn_dict_buf_new);
+	}
+
 #else
-	pkw->buf = (unsigned char *) (q = malloc (dict_size));
+	pkw->buf = (char *) (q = malloc (dict_size));
 
 	fseek (dfp, 0L, SEEK_SET);
 	// skip BOM
@@ -1770,7 +1678,7 @@ load_dictionary (char *lang, pkw_t pkw)
 	// get all string start and put to pkw->idx
 	remain_dict = dict_size;
 	for (dict_item_idx = 0; dict_item_idx < dict_item; dict_item_idx++) {
-		pkw->idx[dict_item_idx] = (unsigned char *) q;
+		pkw->idx[dict_item_idx] = (char *) q;
 		while (remain_dict>0) {
 			if (*q == 0x0a) {
 				*q=0;
@@ -2016,12 +1924,6 @@ search_desc (pkw_t pkw, char *name)
 #endif
 #endif //TRANSLATE_ON_FLY
 
-void reapchild()	// 0527 add
-{
-	signal(SIGCHLD, reapchild);
-	wait(NULL);
-}
-
 int main(int argc, char **argv)
 {
 	usockaddr usa;
@@ -2035,6 +1937,10 @@ int main(int argc, char **argv)
 
 	do_ssl = 0; // default
 	char log_filename[128] = {0};
+
+#if defined(RTCONFIG_UIDEBUG)
+	eval("touch", HTTPD_DEBUG);
+#endif
 
 #if defined(RTCONFIG_SW_HW_AUTH)
 	//if(!httpd_sw_hw_check()) return 0;
@@ -2093,7 +1999,7 @@ int main(int argc, char **argv)
 
 	/* Ignore broken pipes */
 	signal(SIGPIPE, SIG_IGN);
-	signal(SIGCHLD, reapchild);	// 0527 add
+	signal(SIGCHLD, chld_reap);
 
 #ifdef RTCONFIG_HTTPS
 	//if (do_ssl)
@@ -2225,6 +2131,11 @@ int main(int argc, char **argv)
 				}
 
 				http_login_cache(&item->usa);
+#if defined(RTCONFIG_UIDEBUG)
+				struct in_addr req_ip;
+				req_ip.s_addr = login_ip_tmp;
+				HTTPD_DBG("Log ip address: %s\n", inet_ntoa(req_ip));
+#endif
 				handle_request();
 				fflush(conn_fp);
 #ifdef RTCONFIG_HTTPS
@@ -2264,8 +2175,8 @@ int main(int argc, char **argv)
 void save_cert(void)
 {
 #if defined(RTCONFIG_JFFS2) || defined(RTCONFIG_BRCM_NAND_JFFS2) || defined(RTCONFIG_UBIFS)
-	eval("cp", "-p", "/etc/cert.pem", "/etc/key.pem", "/jffs/ssl/");
-	chmod("/jffs/ssl/key.pem", S_IRUSR|S_IWUSR);
+	eval("cp", "-p", "/etc/cert.pem", "/etc/key.pem", "/jffs/.cert/");
+	chmod("/jffs/.cert/key.pem", S_IRUSR|S_IWUSR);
 #else
 	if (eval("tar", "-C", "/", "-czf", "/tmp/cert.tgz", "etc/cert.pem", "etc/key.pem") == 0) {
 		if (nvram_set_file("https_crt_file", "/tmp/cert.tgz", 8192)) {
@@ -2289,6 +2200,7 @@ void erase_cert(void)
 #endif
 	//nvram_unset("https_crt_gen");
 	nvram_set("https_crt_gen", "0");
+	nvram_commit();
 }
 
 void start_ssl(void)
@@ -2296,6 +2208,8 @@ void start_ssl(void)
 	int lockfd;
 	int retry;
 	int i;
+	unsigned long long sn;
+	char t[32];
 
 	lockfd = open("/var/lock/sslinit.lock", O_CREAT | O_RDWR, 0666);
 
@@ -2318,7 +2232,12 @@ void start_ssl(void)
 		if ((!f_exists("/etc/cert.pem")) || (!f_exists("/etc/key.pem"))) {
 			erase_cert();
 			logmessage("httpd", "Generating SSL certificate...");
-			eval("gencert.sh", "web");
+
+			// browsers seems to like this when the ip address moves...     -- zzz
+			f_read("/dev/urandom", &sn, sizeof(sn));
+
+			sprintf(t, "%llu", sn & 0x7FFFFFFFFFFFFFFFULL);
+			eval("gencert.sh", t);
 
 #ifdef RTCONFIG_LETSENCRYPT
 			if (nvram_match("le_enable", "2"))

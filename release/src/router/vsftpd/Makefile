@@ -17,8 +17,12 @@ LINK	=
 
 CFLAGS	+=	-I../shared
 ifeq ($(RTCONFIG_FTP_SSL),y)
-LIBS	=	-lnsl
+LIBS	=	-lnsl -pthread
+ifeq ($(RTCONFIG_OPENSSL11),y)
+OPENSSLDIR = ../openssl-1.1.x
+else
 OPENSSLDIR = ../openssl
+endif
 OPENSSLINC = $(OPENSSLDIR)/include
 LIBS	+=	-L$(OPENSSLDIR)/ -lssl -lcrypto
 CFLAGS	+=	-I$(OPENSSLINC)
@@ -27,6 +31,7 @@ endif
 CFLAGS  += 	-I$(SRCBASE)/include -I$(TOP)/shared -I$(TOP)/libdisk
 LDFLAGS  +=	-L$(TOP)/nvram${BCMEX}$(EX7) -lnvram -L$(TOP)/shared -lshared -L$(TOP)/libdisk -ldisk
 ifeq ($(RTCONFIG_BCMARM),y)
+CFLAGS += -I$(SRCBASE)/shared/bcmwifi/include -DTYPEDEF_FLOAT_T
 CFLAGS += -I$(SRCBASE)/common/include
 LDFLAGS += -lgcc_s
 endif

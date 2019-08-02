@@ -722,9 +722,17 @@ no_match:
 
 char *str2time(char *str, char *buf, int buf_size, int flag){
 	if(START_TIME == flag)
+#ifndef IPTABLES_LEGACY
 		snprintf(buf, buf_size, "%c%c:%c%c:00", *(str), *(str+1), *(str+2), *(str+3));
+#else
+		snprintf(buf, buf_size, "%c%c:%c%c", *(str), *(str+1), *(str+2), *(str+3));
+#endif
 	else if(STOP_TIME == flag)
+#ifndef IPTABLES_LEGACY
 		snprintf(buf, buf_size, "%c%c:%c%c:59", *(str), *(str+1), *(str+2), *(str+3));
+#else
+		snprintf(buf, buf_size, "%c%c:%c%c", *(str), *(str+1), *(str+2), *(str+3));
+#endif
 	return (buf);
 }
 
@@ -1196,7 +1204,9 @@ void redirect_nat_setting(void)
 	fprintf(fp, "*nat\n"
 		":PREROUTING ACCEPT [0:0]\n"
 		":POSTROUTING ACCEPT [0:0]\n"
-		":OUTPUT ACCEPT [0:0]\n");
+		":OUTPUT ACCEPT [0:0]\n"
+		":PUPNP - [0:0]\n"
+		":VUPNP - [0:0]\n");
 #ifdef RTCONFIG_WIFI_SON
 	if(sw_mode() == SW_MODE_AP && nvram_match("cfg_master", "1")){
 		fprintf(fp, "-A PREROUTING -p udp --dport 53 -i %s -j DNAT --to-destination %s:53\n",BR_GUEST, APMODE_BRGUEST_IP);
@@ -1230,7 +1240,9 @@ void repeater_nat_setting(){
 	fprintf(fp, "*nat\n"
 		":PREROUTING ACCEPT [0:0]\n"
 		":POSTROUTING ACCEPT [0:0]\n"
-		":OUTPUT ACCEPT [0:0]\n");
+		":OUTPUT ACCEPT [0:0]\n"
+		":PUPNP - [0:0]\n"
+		":VUPNP - [0:0]\n");
 
 	fprintf(fp, "-A PREROUTING -d 10.0.0.1 -p tcp --dport 80 -j DNAT --to-destination %s:%d\n", lan_ip, lan_port);
 	fprintf(fp, "-A PREROUTING -d %s -p tcp --dport 80 -j DNAT --to-destination %s:%d\n", nvram_default_get("lan_ipaddr"), lan_ip, lan_port);
@@ -1682,6 +1694,14 @@ void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char 
 	dnsfilter_settings(fp, lan_ip);
 #endif
 
+#ifdef RTCONFIG_NTPD
+	if (nvram_get_int("ntpd_enable") && nvram_get_int("ntpd_server_redir")) {
+		fprintf(fp, "-A PREROUTING -i %s -p udp -m udp --dport 123 -j REDIRECT --to-port 123\n"
+			    "-A PREROUTING -i %s -p tcp -m tcp --dport 123 -j REDIRECT --to-port 123\n",
+			    lan_if, lan_if);
+	}
+#endif
+
 #ifdef RTCONFIG_PARENTALCTRL
 	pc_s *pc_list = NULL;
 	int pc_count;
@@ -1866,16 +1886,6 @@ void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char 
 		}
 	}
 #endif
-#ifdef RTCONFIG_WIFI_SON
-	char g_lan_class[32];
-	char g_lan_ip[20];
-	unsigned int dip;
-	struct in_addr gst;
-
-	dip = ntohl(inet_addr(lan_ip)) + 0x100;
-	gst.s_addr = htonl(dip);
-	strcpy(g_lan_ip, inet_ntoa(gst));
-#endif
 
 	fprintf(fp, "COMMIT\n");
 	fclose(fp);
@@ -1907,6 +1917,16 @@ void nat_setting2(char *lan_if, char *lan_ip, char *logaccept, char *logdrop)	//
 	int wan_max_unit = WAN_UNIT_MAX;
 #ifdef RTCONFIG_MULTIWAN_CFG
 	int wanx_rules = 0;
+#endif
+#ifdef RTCONFIG_WIFI_SON
+	char g_lan_class[32];
+	char g_lan_ip[20];
+	unsigned int dip;
+	struct in_addr gst;
+
+	dip = ntohl(inet_addr(lan_ip)) + 0x100;
+	gst.s_addr = htonl(dip);
+	strcpy(g_lan_ip, inet_ntoa(gst));
 #endif
 #ifdef RTCONFIG_TOR
 	char addr_new[32];
@@ -2057,6 +2077,14 @@ void nat_setting2(char *lan_if, char *lan_ip, char *logaccept, char *logdrop)	//
 
 #ifdef RTCONFIG_DNSFILTER
 	dnsfilter_settings(fp, lan_ip);
+#endif
+
+#ifdef RTCONFIG_NTPD
+	if (nvram_get_int("ntpd_enable") && nvram_get_int("ntpd_server_redir")) {
+		fprintf(fp, "-A PREROUTING -i %s -p udp -m udp --dport 123 -j REDIRECT --to-port 123\n"
+		            "-A PREROUTING -i %s -p tcp -m tcp --dport 123 -j REDIRECT --to-port 123\n",
+		            lan_if, lan_if);
+	}
 #endif
 
 #ifdef RTCONFIG_PARENTALCTRL
@@ -2876,7 +2904,7 @@ void write_UrlFilter(char *chain, char *lan_if, char *lan_ip, char *logdrop, FIL
 			srcips[0] = '\0';
 			if(addr && *addr)
 			{
-				char srcAddr[32];
+				char srcAddr[64];
 				int src_type = addr_type_parse(addr, srcAddr, sizeof(srcAddr));
 				if (src_type == TYPE_IP)
 					snprintf(srcips, sizeof(srcips), "-s %s", srcAddr);
@@ -3056,6 +3084,9 @@ filter_setting(char *wan_if, char *wan_ip, char *lan_if, char *lan_ip, char *log
 	    ":other2wan - [0:0]\n"
 #ifdef RTCONFIG_OPENVPN
 	    ":OVPN - [0:0]\n"
+#endif
+#ifdef RTCONFIG_DNSFILTER
+	    ":DNSFILTER_DOT - [0:0]\n"
 #endif
 #ifdef RTCONFIG_PARENTALCTRL
 	    ":PControls - [0:0]\n"
@@ -3492,7 +3523,7 @@ TRACE_PT("writing Parental Control\n");
 		fprintf(fp, "-A FORWARD -p udp -d 224.0.0.0/4 -j ACCEPT\n");
 
 	/* Clamp TCP MSS to PMTU of WAN interface before accepting RELATED packets */
-	if (
+	if (nvram_get_int("jumbo_frame_enable") ||
 #if defined(RTCONFIG_PPTPD) || defined(RTCONFIG_ACCEL_PPTPD)
 	    nvram_get_int("pptpd_enable") ||
 #endif
@@ -3513,7 +3544,7 @@ TRACE_PT("writing Parental Control\n");
 #ifdef RTCONFIG_6RELAYD
 	case IPV6_PASSTHROUGH:
 #endif
-		if (
+		if (!nvram_get_int("jumbo_frame_enable") &&
 #if defined(RTCONFIG_USB_MODEM)
 		    dualwan_unit__nonusbif(unit) &&
 #endif
@@ -4082,6 +4113,10 @@ TRACE_PT("write wl filter\n");
 	}
 #endif
 
+#ifdef RTCONFIG_DNSFILTER
+	dnsfilter_dot_rules(fp, lan_if);
+#endif
+
 	fprintf(fp, "-A FORWARD -i %s -j %s\n", lan_if, logaccept);
 
 	fprintf(fp, "COMMIT\n\n");
@@ -4165,6 +4200,9 @@ filter_setting2(char *lan_if, char *lan_ip, char *logaccept, char *logdrop)
 	    ":ACCESS_RESTRICTION - [0:0]\n"
 #ifdef RTCONFIG_OPENVPN
 	    ":OVPN - [0:0]\n"
+#endif
+#ifdef RTCONFIG_DNSFILTER
+	   ":DNSFILTER_DOT - [0:0]\n"
 #endif
 	   ":other2wan - [0:0]\n"
 #ifdef RTCONFIG_PARENTALCTRL
@@ -4455,14 +4493,44 @@ TRACE_PT("writing Parental Control\n");
 #endif
 		}
 #ifdef RTCONFIG_SSH
-		if (nvram_get_int("sshd_enable") == 1) {
-			fprintf(fp, "-A INPUT -p tcp -m tcp --dport %d -j %s\n",
-				nvram_get_int("sshd_port") ? : 22, logaccept);
+		if (nvram_get_int("sshd_enable") == 1)
+		{
+			if (nvram_match("sshd_bfp", "1"))
+			{
+				fprintf(fp, "-N SSHBFP\n");
+				fprintf(fp, "-A SSHBFP -m recent --set --name SSH --rsource\n");
+				fprintf(fp, "-A SSHBFP -m recent --update --seconds 60 --hitcount 4 --name SSH --rsource -j %s\n", logdrop);
+				fprintf(fp, "-A SSHBFP -j %s\n", logaccept);
+				fprintf(fp, "-A INPUT -p tcp --dport %d -m state --state NEW -j SSHBFP\n",
+					nvram_get_int("sshd_port") ? : 22);
+#ifdef RTCONFIG_IPV6
+				if (ipv6_enabled())
+				{
+					fprintf(fp_ipv6, "-N SSHBFP\n");
+					fprintf(fp_ipv6, "-A SSHBFP -m recent --set --name SSH --rsource\n");
+					fprintf(fp_ipv6, "-A SSHBFP -m recent --update --seconds 60 --hitcount 4 --name SSH --rsource -j %s\n", logdrop);
+					fprintf(fp_ipv6, "-A SSHBFP -j %s\n", logaccept);
+					fprintf(fp_ipv6, "-A INPUT -p tcp --dport %d -m state --state NEW -j SSHBFP\n",
+						nvram_get_int("sshd_port") ? : 22);
+				}
+#endif
+			}
+                        else
+			{
+				fprintf(fp, "-A INPUT -p tcp -m tcp --dport %d -j %s\n",
+					nvram_get_int("sshd_port") ? : 22, logaccept);
+#ifdef RTCONFIG_IPV6
+				if (ipv6_enabled())
+					fprintf(fp_ipv6, "-A INPUT -p tcp --dport %d -j %s\n",
+						nvram_get_int("sshd_port") ? : 22, logaccept);
+#endif
+			}
 		}
 #endif
 
 #ifdef RTCONFIG_FTP
-		if (nvram_get_int("enable_ftp")) {
+		if ((nvram_get_int("enable_ftp")) && (nvram_get_int("ftp_wanac")))
+		{
 			fprintf(fp, "-A INPUT -p tcp -m tcp --dport 21 -j %s\n", logaccept);
 			int local_ftpport = nvram_get_int("vts_ftpport");
 			if (nvram_match("vts_enable_x", "1") && local_ftpport != 0 && local_ftpport != 21 && ruleHasFTPport())
@@ -4567,11 +4635,14 @@ TRACE_PT("writing Parental Control\n");
 	if (nvram_get_int("mr_enable_x"))
 		fprintf(fp, "-A FORWARD -p udp -d 224.0.0.0/4 -j ACCEPT\n");
 
+	/* Clamp TCP MSS to PMTU of WAN interface before accepting RELATED packets */
+	if (nvram_get_int("jumbo_frame_enable"))
+		goto clamp_mss;
+
 #if defined(RTCONFIG_PPTPD) || defined(RTCONFIG_ACCEL_PPTPD)
 	if (nvram_get_int("pptpd_enable"))
 		goto clamp_mss;
 #endif
-	/* Clamp TCP MSS to PMTU of WAN interface before accepting RELATED packets */
 	for (unit = WAN_UNIT_FIRST; unit < wan_max_unit; unit++) {
 		if (!is_wan_connect(unit))
 			continue;
@@ -4585,9 +4656,7 @@ TRACE_PT("writing Parental Control\n");
 		    strcmp(wan_proto, "pppoe") == 0 ||
 		    strcmp(wan_proto, "pptp") == 0 ||
 		    strcmp(wan_proto, "l2tp") == 0) {
-#if defined(RTCONFIG_PPTPD) || defined(RTCONFIG_ACCEL_PPTPD)
 		clamp_mss:
-#endif
 			fprintf(fp, "-A FORWARD -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu\n");
 			if (*macaccept)
 				fprintf(fp, "-A %s -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu\n", macaccept);
@@ -4601,7 +4670,7 @@ TRACE_PT("writing Parental Control\n");
 #ifdef RTCONFIG_6RELAYD
 	case IPV6_PASSTHROUGH:
 #endif
-		if (
+		if (!nvram_get_int("jumbo_frame_enable") &&
 #if defined(RTCONFIG_USB_MODEM)
 		    dualwan_unit__nonusbif(wan_primary_ifunit_ipv6()) &&
 #endif
@@ -5196,6 +5265,10 @@ TRACE_PT("write wl filter\n");
 	}
 #endif
 
+#ifdef RTCONFIG_DNSFILTER
+	dnsfilter_dot_rules(fp, lan_if);
+#endif
+
 	fprintf(fp, "COMMIT\n\n");
 	if(fp) fclose(fp);
 
@@ -5366,7 +5439,8 @@ mangle_setting(char *wan_if, char *wan_ip, char *lan_if, char *lan_ip, char *log
 		if (fp != NULL) {
 			fprintf(fp, "*mangle\n"
 			    ":DNSFILTERI - [0:0]\n"
-			    ":DNSFILTERF - [0:0]\n");
+			    ":DNSFILTERF - [0:0]\n"
+			    ":DNSFILTER_DOT - [0:0]\n");
 
 			dnsfilter6_settings(fp, lan_if, lan_ip);
 
@@ -5552,7 +5626,8 @@ mangle_setting2(char *lan_if, char *lan_ip, char *logaccept, char *logdrop)
 		if (fp != NULL) {
 			fprintf(fp, "*mangle\n"
 				":DNSFILTERI - [0:0]\n"
-				":DNSFILTERF - [0:0]\n");
+				":DNSFILTERF - [0:0]\n"
+				":DNSFILTER_DOT - [0:0]\n");
 
 			dnsfilter6_settings(fp, lan_if, lan_ip);
 
@@ -6228,7 +6303,7 @@ int start_firewall(int wanunit, int lanunit)
 leave:
 	file_unlock(lock);
 
-	run_custom_script("firewall-start", wan_if);
+	run_custom_script("firewall-start", 0, wan_if, NULL);
 
 	return 0;
 }

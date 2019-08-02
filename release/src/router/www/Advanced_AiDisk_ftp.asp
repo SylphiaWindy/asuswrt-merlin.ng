@@ -257,10 +257,10 @@ function showPermissionTitle(){
 var controlApplyBtn = 0;
 function showApplyBtn(){
 	if(this.controlApplyBtn == 1){
-		document.getElementById("changePermissionBtn").className = "button_gen_long";
+		document.getElementById("changePermissionBtn").className = "button_gen";
 		document.getElementById("changePermissionBtn").disabled = false;
 	}else{
-		document.getElementById("changePermissionBtn").className = "button_gen_long_dis";
+		document.getElementById("changePermissionBtn").className = "button_gen_dis";
 		document.getElementById("changePermissionBtn").disabled = true;
 	}	
 }
@@ -308,10 +308,10 @@ function show_permissions_of_account(account_order, protocol){
 					permissions = get_account_permissions_in_pool(accountName, poolName);
 				}
 
-				for(var k = 1; j < permissions.length; ++k){
-					var folderBarCode = get_folderBarCode_in_pool(poolName, permissions[k][0]);
+				for(var j = 1; j < permissions.length; ++j){
+					var folderBarCode = get_folderBarCode_in_pool(poolName, permissions[j][0]);
 					if(protocol == "cifs")
-						showPermissionRadio(folderBarCode, permissions[k][1]);
+						showPermissionRadio(folderBarCode, permissions[j][1]);
 					else if(protocol == "ftp")
 						showPermissionRadio(folderBarCode, permissions[j][2]);
 					else{
@@ -692,7 +692,7 @@ function applyRule(){
 }
 
 function validForm(){
-	if(!validator.range(document.form.st_max_user, 1, 10)){
+	if(!validator.range(document.form.st_max_user, 1, 9)){
 		document.form.st_max_user.focus();
 		document.form.st_max_user.select();
 		return false;
@@ -781,8 +781,7 @@ function switchUserType(flag){
 					</tr>
 				</table>
 			</div>
-			<div style="margin:5px;"><img src="/images/New_ui/export/line_export.png"></div>
-
+			<div style="margin:5px;" class="splitLine"></div>
 			<div class="formfontdesc"><#FTP_desc#></div>
 
 			<table width="740px" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">
@@ -857,7 +856,7 @@ function switchUserType(flag){
 						<a class="hintstyle" href="javascript:void(0);" onClick="openHint(17,1);"><#ShareNode_MaximumLoginUser_itemname#></a>
 					</th>
 					<td>
-						<input type="text" name="st_max_user" class="input_3_table" maxlength="2" value="<% nvram_get("st_max_user"); %>" onKeyPress="return validator.isNumber(this, event);" autocorrect="off" autocapitalize="off">
+						<input type="text" name="st_max_user" class="input_3_table" maxlength="1" value="<% nvram_get("st_max_user"); %>" onKeyPress="return validator.isNumber(this, event);" autocorrect="off" autocapitalize="off">
 					</td>
 				</tr>
 				<tr>
@@ -949,7 +948,7 @@ function switchUserType(flag){
 			 	 <!-- the tree of folders -->
   		      	<div id="e0" style="font-size:10pt; margin-top:2px;"></div>
 			  	<div style="text-align:center; margin:10px auto; border-top:1px dotted #CCC; width:95%; padding:2px;">
-			    		<input name="changePermissionBtn" id="changePermissionBtn" type="button" value="<#CTL_save_permission#>" class="button_gen_long_dis" disabled="disabled">
+					<input name="changePermissionBtn" id="changePermissionBtn" type="button" value="<#CTL_onlysave#>" class="button_gen_dis" disabled="disabled">
 			  	</div>
 		    		</td>
 		    		<!-- The right side table of folders.    End -->

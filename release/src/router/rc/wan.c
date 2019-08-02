@@ -671,7 +671,7 @@ void update_wan_state(char *prefix, int state, int reason)
 	}
         else if (state == WAN_STATE_CONNECTED) {
 		sprintf(tmp,"%c",prefix[3]);
-                run_custom_script("wan-start", tmp);
+		run_custom_script("wan-start", 0, tmp, NULL);
         }
 
 #if defined(RTCONFIG_WANRED_LED)
@@ -922,7 +922,7 @@ int check_wan_if(int unit)
 		else
 			new_vid = 4;
 		dbG("cur_vid=%d, new_vid=%d\n", cur_ewan_vid, new_vid);
-		
+
 		if(new_vid != cur_ewan_vid)
 		{
 			//update port info
@@ -949,7 +949,7 @@ int check_wan_if(int unit)
 			snprintf(new_vif, sizeof(new_vif), "vlan%d", new_vid);
 
 			dbG("cur_vif=%s, new_vif=%s\n", cur_vif, new_vif);
-			
+
 			char word[256], *next, tmp[256];
 
 			//replace old vlan interface by new vlan interface
@@ -989,7 +989,7 @@ int check_wan_if(int unit)
 				}
 			}
 
-			//remove old vlan		
+			//remove old vlan
 			eval("ifconfig", cur_vif, "down");
 			eval("vconfig", "rem", cur_vif);
 
@@ -1197,7 +1197,7 @@ _dprintf("start_wan_if: USB modem is scanning...\n");
 			nvram_set(strcat_r(prefix, "dnsenable_x", tmp), "1");
 #endif
 
-			char *pppd_argv[] = { "/usr/sbin/pppd", "call", "3g", "nochecktime", NULL};
+			char *pppd_argv[] = { "/usr/sbin/pppd", "call", "3g", NULL};
 
 			if(nvram_get_int("stop_conn_3g") != 1)
 				_eval(pppd_argv, NULL, 0, NULL);
@@ -1489,7 +1489,7 @@ TRACE_PT("3g begin with %s.\n", wan_ifname);
 
 		update_wan_state(prefix, WAN_STATE_CONNECTING, 0);
 
-		/*  
+		/*
 		 * Configure PPPoE connection. The PPPoE client will run
 		 * ip-up/ip-down scripts upon link's connect/disconnect.
 		 */
@@ -1688,6 +1688,14 @@ TRACE_PT("3g begin with %s.\n", wan_ifname);
 		 */
 		else if (strcmp(wan_proto, "dhcp") == 0)
 		{
+#if defined(RTCONFIG_AMAS) && defined(RTCONFIG_ETHOBD)
+			if (nvram_get_int("x_Setting") == 0) {
+				if(strcmp(wan_ifname, nvram_safe_get("eth_ifnames"))) {
+					dbG("ifup:%s\n", nvram_safe_get("eth_ifnames"));
+					ifconfig(nvram_safe_get("eth_ifnames"), IFUP, NULL, NULL);
+				}
+			}
+#endif
 			/* Bring up WAN interface */
 			dbG("ifup:%s\n", wan_ifname);
 			ifconfig(wan_ifname, IFUP, NULL, NULL);
@@ -1751,7 +1759,7 @@ TRACE_PT("3g begin with %s.\n", wan_ifname);
 			}
 #endif
 			restart_coovachilli_if_conflicts(nvram_pf_get(prefix, "ipaddr"), nvram_pf_get(prefix, "netmask"));
-			
+
 			/* Assign static IP address to i/f */
 			ifconfig(wan_ifname, IFUP,
 					nvram_safe_get(strcat_r(prefix, "ipaddr", tmp)),
@@ -1853,7 +1861,9 @@ stop_wan_if(int unit)
 	// Handel for each interface
 	if(unit == wan_primary_ifunit()){
 		killall_tk("stats");
+#ifndef RTCONFIG_NTPD
 		killall_tk("ntpclient");
+#endif
 
 		/* Shutdown and kill all possible tasks */
 #if 0
@@ -2033,8 +2043,11 @@ int update_resolvconf(void)
 #ifdef RTCONFIG_YANDEXDNS
 	int yadns_mode = nvram_get_int("yadns_enable_x") ? nvram_get_int("yadns_mode") : YADNS_DISABLED;
 #endif
+#ifdef RTCONFIG_DNSPRIVACY
+	int dnspriv_enable = nvram_get_int("dnspriv_enable");
+#endif
 #ifdef RTCONFIG_OPENVPN
-        int dnsstrict = 0;
+        int dnsmode;
 #endif
 #ifdef RTCONFIG_DUALWAN
 	int primary_unit = wan_primary_ifunit();
@@ -2052,11 +2065,10 @@ int update_resolvconf(void)
 		goto error;
 	}
 
-/* Add DNS from VPN clients, others if non-exclusive */
+/* Add DNS if no VPN client is globally set to exclusive */
 #ifdef RTCONFIG_OPENVPN
-	dnsstrict = write_ovpn_resolv(fp, fp_servers);
-	// If dns not set to exclusive
-	if (dnsstrict != 3)
+	dnsmode = get_max_dnsmode();
+	if (dnsmode != OVPN_DNSMODE_EXCLUSIVE)
 #endif
 	{
 		for (unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; unit++) {
@@ -2084,6 +2096,10 @@ int update_resolvconf(void)
 			do {
 #ifdef RTCONFIG_YANDEXDNS
 				if (yadns_mode != YADNS_DISABLED)
+					break;
+#endif
+#ifdef RTCONFIG_DNSPRIVACY
+				if (dnspriv_enable)
 					break;
 #endif
 #ifdef RTCONFIG_DUALWAN
@@ -2121,6 +2137,11 @@ int update_resolvconf(void)
 		}
 	}
 
+/* Add DNS from VPN clients - add at the end since config is read backward by dnsmasq */
+#ifdef RTCONFIG_OPENVPN
+	write_ovpn_dns(fp_servers);
+#endif
+
 #ifdef RTCONFIG_YANDEXDNS
 	if (yadns_mode != YADNS_DISABLED) {
 		char *server[2];
@@ -2129,8 +2150,16 @@ int update_resolvconf(void)
 			fprintf(fp_servers, "server=%s\n", server[unit]);
 			fprintf(fp_servers, "server=%s#%u\n", server[unit], YADNS_DNSPORT);
 		}
-	}
+	} else
 #endif
+#ifdef RTCONFIG_DNSPRIVACY
+	if (dnspriv_enable) {
+		if (!nvram_get_int("dns_local_cache"))
+			fprintf(fp, "nameserver %s\n", "127.0.1.1");
+		fprintf(fp_servers, "server=%s\n", "127.0.1.1");
+	} else
+#endif
+	;
 
 #ifdef RTCONFIG_IPV6
 	if (ipv6_enabled() && is_routing_enabled()) {
@@ -2171,6 +2200,10 @@ int update_resolvconf(void)
 				continue;
 			}
 #endif
+#ifdef RTCONFIG_DNSPRIVACY
+			if (dnspriv_enable)
+				continue;
+#endif
 			fprintf(fp_servers, "server=%s\n", tmp);
 		}
 
@@ -2192,7 +2225,7 @@ int update_resolvconf(void)
 	file_unlock(lock);
 
 #ifdef RTCONFIG_OPENVPN
-	if (dnsstrict == 2)
+	if (dnsmode == OVPN_DNSMODE_STRICT)
 		start_dnsmasq();	// add strict-order
 	else
 #endif
@@ -2462,6 +2495,7 @@ wan_up(const char *pwan_ifname)
 	char ppa_cmd[255] = {0};
 #endif
 	FILE *fp;
+	int i=0;
 
 	/* Value of pwan_ifname can be modfied after do_dns_detect */
 	strlcpy(wan_ifname, pwan_ifname, 16);
@@ -2537,9 +2571,7 @@ wan_up(const char *pwan_ifname)
 			start_igmpproxy(wan_ifname);
 
 #ifdef RTCONFIG_LANTIQ
-		snprintf(ppa_cmd, sizeof(ppa_cmd), "ppacmd delwan -i %s", wan_ifname);
-		_dprintf("[%s][%d] %s\n", __func__, __LINE__, ppa_cmd);
-		system(ppa_cmd);
+		disable_ppa_wan(wan_ifname);
 #endif
 		_dprintf("%s_x(%s): done.\n", __FUNCTION__, wan_ifname);
 
@@ -2693,8 +2725,11 @@ wan_up(const char *pwan_ifname)
 	stop_ovpn_all();
 #endif
 
-	/* Sync time */
-	refresh_ntpc();
+	/* Sync time if not already set, or not running a daemon */
+#ifdef RTCONFIG_NTPD
+	if (!nvram_get_int("ntp_ready"))
+#endif
+		refresh_ntpc();
 
 #if !defined(RTCONFIG_MULTIWAN_CFG)
 	if (wan_unit != wan_primary_ifunit()
@@ -2703,11 +2738,13 @@ wan_up(const char *pwan_ifname)
 #endif
 			)
 	{
+		if (nvram_get_int("ntp_ready")) {
 #ifdef RTCONFIG_OPENVPN
-		start_ovpn_eas();
+			start_ovpn_eas();
 #endif
-		stop_ddns();
-		start_ddns();
+			stop_ddns();
+			start_ddns();
+		}
 		return;
 	}
 #endif
@@ -2720,8 +2757,10 @@ wan_up(const char *pwan_ifname)
 	stop_upnp();
 	start_upnp();
 
-	stop_ddns();
-	start_ddns();
+	if (nvram_get_int("ntp_ready")) {
+		stop_ddns();
+		start_ddns();
+	}
 
 #ifdef RTCONFIG_VPNC
 #ifdef RTCONFIG_VPN_FUSION
@@ -2827,16 +2866,11 @@ wan_up(const char *pwan_ifname)
 	}
 
 #ifdef RTCONFIG_LANTIQ
-	snprintf(ppa_cmd, sizeof(ppa_cmd), "ppacmd delwan -i %s", wan_ifname);
-	_dprintf("[%s][%d] %s\n", __func__, __LINE__, ppa_cmd);
-	system(ppa_cmd);
+	disable_ppa_wan(wan_ifname);
 
 	if(ppa_support(wan_unit) == 1){
 		sleep(1);
-
-		snprintf(ppa_cmd, sizeof(ppa_cmd), "ppacmd addwan -i %s", wan_ifname);
-		_dprintf("[%s][%d] %s\n", __func__, __LINE__, ppa_cmd);
-		system(ppa_cmd);
+		enable_ppa_wan(wan_ifname);
 	}
 #endif
 
@@ -2877,7 +2911,9 @@ wan_up(const char *pwan_ifname)
 #endif
 
 #ifdef RTCONFIG_OPENVPN
-	start_ovpn_eas();
+	if (nvram_get_int("ntp_ready")) {
+		start_ovpn_eas();
+	}
 #endif
 
 _dprintf("%s(%s): done.\n", __FUNCTION__, wan_ifname);
@@ -2983,7 +3019,7 @@ wan_down(char *wan_ifname)
 	}
 #endif
 #ifdef RTCONFIG_LANTIQ
-	eval("ppacmd", "delwan", "-i", wan_ifname);
+	disable_ppa_wan(wan_ifname);
 #endif
 }
 
@@ -3152,6 +3188,9 @@ found_default_route(int wan_unit)
 	char *wanif;
 
 	if(wan_unit != wan_primary_ifunit())
+		return 1;
+
+	if(dualwan_unit__usbif(wan_unit) && nvram_get_int("modem_pdp") == 2)
 		return 1;
 
 	n = 0;
@@ -3694,7 +3733,7 @@ int autodet_plc_main(int argc, char *argv[]){
 	nvram_set_int("autodet_plc_state" , cnt);
 
 	return 0;
-}	
+}
 #endif
 
 int autodet_main(int argc, char *argv[]){
@@ -3790,7 +3829,7 @@ int autodet_main(int argc, char *argv[]){
 
 		i = 0;
 		while(i < mac_num && (!is_wan_connect(unit) && !is_ip_conflict(unit))){
-			if(!(nvram_match("wl0_country_code", "SG")) && 
+			if(!(nvram_match("wl0_country_code", "SG")) &&
 			   strncmp(nvram_safe_get("territory_code"), "SG", 2) != 0){ // Singpore do not auto clone
 				_dprintf("try clone %s\n", mac_clone[i]);
 				nvram_set(strcat_r(prefix, "hwaddr_x", tmp), mac_clone[i]);

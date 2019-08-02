@@ -180,36 +180,27 @@ void gen_lan_ports(char *buf, const int sample[SWPORT_COUNT], int index, int ind
 
 int _ifconfig(const char *name, int flags, const char *addr, const char *netmask, const char *dstaddr, int mtu)
 {
-	int s, err;
+	int s, err, postup;
 	struct ifreq ifr;
 	struct in_addr in_addr, in_netmask, in_broadaddr;
 
 #ifdef RTCONFIG_LANTIQ
-	if(strcmp(name, "wlan0") == 0 ||
-		strcmp(name, "wlan2") == 0){
+	/* wlan0-wlan0.2, wlan2-wlan2.2 */
+	if(strncmp(name, "wlan", 4) == 0){
 		if(flags == 0){
-			_dprintf("[%s][%d]skip name:[%s]\n", __func__, __LINE__, name);
+			_dprintf("[%s][%d]skip ifconfig down:[%s]\n",
+				__func__, __LINE__, name);
 			return -1;
 		}
 		if(flags & IFUP){
-			if(strcmp(name, "wlan0") == 0 && (flags & IFUP)){
-				if(nvram_get_int("wl0_radio") == 0){
-					_dprintf("[%s][%d] wl0_radio=0, skip IFUP wlan0\n", __func__, __LINE__);
-					return -1;
-				}
-			}
-			if(strcmp(name, "wlan2") == 0 && (flags & IFUP)){
-				if(nvram_get_int("wl1_radio") == 0){
-					_dprintf("[%s][%d] wl1_radio=0, skip IFUP wlan2\n", __func__, __LINE__);
-					return -1;
-				}
-			}
+			if(skip_ifconfig_up(name) == -1) return -1;
 		}
 	}
 	if(strcmp(name, "eth0_1") == 0 ||
 		strcmp(name, "eth0_2") == 0 ||
 		strcmp(name, "eth0_3") == 0 ||
-		strcmp(name, "eth0_4") == 0){
+		strcmp(name, "eth0_4") == 0 ||
+		strcmp(name, "eth1") == 0){
 		set_hwaddr(name, get_lan_hwaddr());
 		if(flags == 0) return -1;
 	}
@@ -227,10 +218,11 @@ int _ifconfig(const char *name, int flags, const char *addr, const char *netmask
 
 	/* Set interface name */
 	strlcpy(ifr.ifr_name, name, IFNAMSIZ);
+	postup = strchr(name, ':') && (flags & IFUP);
 
 	/* Set interface flags */
 	ifr.ifr_flags = flags;
-	if (ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
+	if (!postup && ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
 		goto ERROR;
 
 	/* Set IP address */
@@ -265,6 +257,11 @@ int _ifconfig(const char *name, int flags, const char *addr, const char *netmask
 		if (ioctl(s, SIOCSIFDSTADDR, &ifr) < 0)
 			goto ERROR;
 	}
+
+	/* Set interface flags */
+	ifr.ifr_flags = flags;
+	if (postup && ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
+		goto ERROR;
 
 	/* Set MTU */
 	if (mtu > 0) {
@@ -412,6 +409,9 @@ void config_loopback(void)
 {
 	/* Bring up loopback interface */
 	ifconfig("lo", IFUP, "127.0.0.1", "255.0.0.0");
+#ifdef RTCONFIG_DNSPRIVACY
+	ifconfig("lo:0", IFUP, "127.0.1.1", "255.0.0.0");
+#endif
 
 	/* Add to routing table */
 	route_add("lo", 0, "127.0.0.0", "0.0.0.0", "255.0.0.0");

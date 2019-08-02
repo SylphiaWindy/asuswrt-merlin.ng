@@ -8,20 +8,6 @@
 
 #include "apps.h"
 
-char *alloc_string(const char *string){
-	char *buf;
-	int len;
-
-	len = strlen(string);
-	if((buf = (char *)malloc(len+1)) == NULL)
-		return NULL;
-
-	strcpy(buf, string);
-	buf[len] = 0;
-
-	return buf;
-}
-
 char *get_status_field(const char *target, const char *field){
 	char *buf;
 	char *ptr_head, *ptr_tail, backup;
@@ -36,7 +22,7 @@ char *get_status_field(const char *target, const char *field){
 
 	backup = ptr_tail[0];
 	ptr_tail[0] = '\0';
-	buf = alloc_string(ptr_head);
+	buf = strdup(ptr_head);
 	ptr_tail[0] = backup;
 
 	return buf;
@@ -175,7 +161,7 @@ _dprintf("httpd: get the Zero size of the ASUS APP list.\n");
 				follow_apps_info->new_file_name = get_status_field(pkg_head, FIELD_FILENAME);
 				if(follow_apps_info->from_owner != NULL)
 					free(follow_apps_info->from_owner);
-				follow_apps_info->from_owner = alloc_string(APP_OWNER_ASUS);
+				follow_apps_info->from_owner = strdup(APP_OWNER_ASUS);
 			}
 			// Non-installed package.
 			else{
@@ -187,8 +173,8 @@ _dprintf("httpd: get the Zero size of the ASUS APP list.\n");
 
 				(*follow_apps_info_list)->name = get_status_field(pkg_head, FIELD_PACKAGE);
 				(*follow_apps_info_list)->new_version = get_status_field(pkg_head, FIELD_VERSION);
-				(*follow_apps_info_list)->installed = alloc_string(FIELD_NO);
-				(*follow_apps_info_list)->enabled = alloc_string(FIELD_NO);
+				(*follow_apps_info_list)->installed = strdup(FIELD_NO);
+				(*follow_apps_info_list)->enabled = strdup(FIELD_NO);
 				(*follow_apps_info_list)->source = get_status_field(pkg_head, FIELD_SOURCE);
 				(*follow_apps_info_list)->url = get_status_field(pkg_head, FIELD_URL);
 				(*follow_apps_info_list)->description = get_status_field(pkg_head, FIELD_DESCRIPTION);
@@ -196,7 +182,7 @@ _dprintf("httpd: get the Zero size of the ASUS APP list.\n");
 				(*follow_apps_info_list)->new_optional_utility = get_status_field(pkg_head, FIELD_OPTIONALUTILITY);
 				(*follow_apps_info_list)->help_path = get_status_field(pkg_head, FIELD_HELPPATH);
 				(*follow_apps_info_list)->new_file_name = get_status_field(pkg_head, FIELD_FILENAME);
-				(*follow_apps_info_list)->from_owner = alloc_string(APP_OWNER_ASUS);
+				(*follow_apps_info_list)->from_owner = strdup(APP_OWNER_ASUS);
 			}
 
 			memset(line, 0, sizeof(line));
@@ -252,7 +238,7 @@ _dprintf("httpd: get the Zero size of the third-party APP list.\n");
 				follow_apps_info->new_optional_utility = get_status_field(pkg_head, FIELD_OPTIONALUTILITY);
 				if(follow_apps_info->from_owner != NULL)
 					free(follow_apps_info->from_owner);
-				follow_apps_info->from_owner = alloc_string(APP_OWNER_OLEG);
+				follow_apps_info->from_owner = strdup(APP_OWNER_OLEG);
 			}
 			// Non-installed package.
 			else{
@@ -264,8 +250,8 @@ _dprintf("httpd: get the Zero size of the third-party APP list.\n");
 
 				(*follow_apps_info_list)->name = get_status_field(pkg_head, FIELD_PACKAGE);
 				(*follow_apps_info_list)->new_version = get_status_field(pkg_head, FIELD_VERSION);
-				(*follow_apps_info_list)->installed = alloc_string(FIELD_NO);
-				(*follow_apps_info_list)->enabled = alloc_string(FIELD_NO);
+				(*follow_apps_info_list)->installed = strdup(FIELD_NO);
+				(*follow_apps_info_list)->enabled = strdup(FIELD_NO);
 				(*follow_apps_info_list)->source = get_status_field(pkg_head, FIELD_SOURCE);
 				(*follow_apps_info_list)->url = get_status_field(pkg_head, FIELD_URL);
 				(*follow_apps_info_list)->description = get_status_field(pkg_head, FIELD_DESCRIPTION);
@@ -273,7 +259,7 @@ _dprintf("httpd: get the Zero size of the third-party APP list.\n");
 				(*follow_apps_info_list)->new_optional_utility = get_status_field(pkg_head, FIELD_OPTIONALUTILITY);
 				(*follow_apps_info_list)->help_path = get_status_field(pkg_head, FIELD_HELPPATH);
 				(*follow_apps_info_list)->new_file_name = get_status_field(pkg_head, FIELD_FILENAME);
-				(*follow_apps_info_list)->from_owner = alloc_string(APP_OWNER_OLEG);
+				(*follow_apps_info_list)->from_owner = strdup(APP_OWNER_OLEG);
 			}
 
 			memset(line, 0, sizeof(line));
@@ -324,7 +310,7 @@ _dprintf("httpd: get the Zero size of the third-party APP list.\n");
 			follow_apps_info->version = get_status_field(pkg_head, FIELD_VERSION);
 			if(follow_apps_info->installed != NULL)
 				free(follow_apps_info->installed);
-			follow_apps_info->installed = alloc_string(FIELD_YES);
+			follow_apps_info->installed = strdup(FIELD_YES);
 		}
 		// Non-installed package.
 		else if(!argv || !strcmp(argv, APP_OWNER_ALL)){
@@ -336,8 +322,8 @@ _dprintf("httpd: get the Zero size of the third-party APP list.\n");
 
 			(*follow_apps_info_list)->name = get_status_field(pkg_head, FIELD_PACKAGE);
 			(*follow_apps_info_list)->version = get_status_field(pkg_head, FIELD_VERSION);
-			(*follow_apps_info_list)->installed = alloc_string(FIELD_YES);
-			(*follow_apps_info_list)->from_owner = alloc_string(APP_OWNER_OTHERS);
+			(*follow_apps_info_list)->installed = strdup(FIELD_YES);
+			(*follow_apps_info_list)->from_owner = strdup(APP_OWNER_OTHERS);
 		}
 
 		memset(line, 0, sizeof(line));

@@ -94,20 +94,10 @@ function initial() {
 		hide_cstats_ip(getRadioValue(document.form.cstats_all));
 	}
 
-	if(!live_update_support) {
-		document.getElementById("fwcheck").style.display="none";
-		document.getElementById("beta_firmware_path").style.display="none";
-	}
-
 	if ((machine_name.search("arm") != -1) || hnd_support) {
 		document.getElementById("ct_established_default").innerHTML = "Default: 2400";
 		if (!hnd_support) showhide("memory_mgmt_tr" ,1);
 	}
-
-	if (document.form.dns_probe_content.value == "")
-		setRadioValue(document.form.dns_probe, 0);
-	else
-		setRadioValue(document.form.dns_probe, 1);
 
 	document.aidiskForm.protocol.value = PROTOCOL;
 	initial_dir();
@@ -570,10 +560,8 @@ function applyRule(){
 		}
 	}
 
-	if (getRadioValue(document.form.dns_probe) == 0)
-		document.form.dns_probe_content.value = "";
-	else if ("<% nvram_get("dns_probe_content"); %>" != "1" )	// We just enabled it
-		document.form.dns_probe_content.value = "<% nvram_default_get("dns_probe_content"); %>";
+	if (getRadioValue(document.form.dns_local_cache) != "<% nvram_get("dns_local_cache"); %>")
+		document.form.action_script.value += ";restart_dnsmasq";
 
 	document.form.submit();
 }
@@ -657,7 +645,7 @@ function done_validating(action){
 <input type="hidden" name="next_page" value="Tools_OtherSettings.asp">
 <input type="hidden" name="modified" value="0">
 <input type="hidden" name="action_mode" value="apply">
-<input type="hidden" name="action_script" value="restart_rstats;restart_conntrack;restart_leds">
+<input type="hidden" name="action_script" value="restart_rstats;restart_conntrack">
 <input type="hidden" name="action_wait" value="5">
 <input type="hidden" name="first_time" value="">
 <input type="hidden" name="SystemCmd" value="">
@@ -665,7 +653,6 @@ function done_validating(action){
 <input type="hidden" name="firmver" value="<% nvram_get("firmver"); %>">
 <input type="hidden" name="ct_tcp_timeout" value="<% nvram_get("ct_tcp_timeout"); %>">
 <input type="hidden" name="ct_udp_timeout" value="<% nvram_get("ct_udp_timeout"); %>">
-<input type="hidden" name="dns_probe_content" value="<% nvram_get("dns_probe_content"); %>">
 
 <table class="content" align="center" cellpadding="0" cellspacing="0">
   <tr>
@@ -686,8 +673,7 @@ function done_validating(action){
                 <td valign="top">
 			<div>&nbsp;</div>
 			<div class="formfonttitle">Tools - Other Settings</div>
-			<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
-
+			<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 				<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable">
 					<thead>
 						<tr>
@@ -769,36 +755,6 @@ function done_validating(action){
 						</td>
 					</tr>
 
-				</table>
-
-				<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable">
-                                        <thead>
-						<tr>
-							<td colspan="2">Miscellaneous Options</td>
-						</tr>
-					</thead>
-
-					<tr>
-						<th>Stealth Mode (disable all LEDs)</th>
-						<td>
-							<input type="radio" name="led_disable" class="input" value="1" <% nvram_match_x("", "led_disable", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="led_disable" class="input" value="0" <% nvram_match_x("", "led_disable", "0", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
-					<tr id="fwcheck">
-						<th><a name="fwcheck" id="fwcheck"></a><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,15);">New firmware version check</a></th>
-						<td>
-							<input type="radio" name="firmware_check_enable" class="input" value="1" <% nvram_match("firmware_check_enable", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="firmware_check_enable" class="input" value="0" <% nvram_match("firmware_check_enable", "0", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
-					<tr id="beta_firmware_path">
-						<th>Check for new beta firmware releases</th>
-						<td>
-							<input type="radio" name="firmware_path" class="input" value="1" <% nvram_match("firmware_path", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="firmware_path" class="input" value="0" <% nvram_match("firmware_path", "0", "checked"); %><% nvram_match("firmware_path", "", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
 				</table>
 
 				<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable">
@@ -916,10 +872,10 @@ function done_validating(action){
 						</td>
 					</tr>
 					<tr>
-						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,18);">Wan: Use DNS probes to determine if WAN is up (default: Yes)</a></th>
+						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,27);">Wan: Use local caching DNS server as system resolver (default: No)</a></th>
 						<td>
-							<input type="radio" name="dns_probe" class="input" value="1"><#checkbox_Yes#>
-							<input type="radio" name="dns_probe" class="input" value="0"><#checkbox_No#>
+							<input type="radio" name="dns_local_cache" class="input" value="1" <% nvram_match_x("", "dns_local_cache", "1", "checked"); %>><#checkbox_Yes#>
+							<input type="radio" name="dns_local_cache" class="input" value="0" <% nvram_match_x("", "dns_local_cache", "0", "checked"); %>><#checkbox_No#>
 						</td>
 					</tr>
 					<tr>

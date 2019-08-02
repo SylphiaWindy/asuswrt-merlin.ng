@@ -20,292 +20,8 @@ You have another version of autoconf.  It may work, but is not guaranteed to.
 If you have problems, you may need to regenerate the build system entirely.
 To do so, use the procedure documented by the package, typically 'autoreconf'.])])
 
-# gpgme.m4 - autoconf macro to detect GPGME.
-# Copyright (C) 2002, 2003, 2004, 2014 g10 Code GmbH
-#
-# This file is free software; as a special exception the author gives
-# unlimited permission to copy and/or distribute it, with or without
-# modifications, as long as this notice is preserved.
-#
-# This file is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY, to the extent permitted by law; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-#
-# Last-changed: 2014-10-02
-
-
-AC_DEFUN([_AM_PATH_GPGME_CONFIG],
-[ AC_ARG_WITH(gpgme-prefix,
-            AC_HELP_STRING([--with-gpgme-prefix=PFX],
-                           [prefix where GPGME is installed (optional)]),
-     gpgme_config_prefix="$withval", gpgme_config_prefix="")
-  if test x"${GPGME_CONFIG}" = x ; then
-     if test x"${gpgme_config_prefix}" != x ; then
-        GPGME_CONFIG="${gpgme_config_prefix}/bin/gpgme-config"
-     else
-       case "${SYSROOT}" in
-         /*)
-           if test -x "${SYSROOT}/bin/gpgme-config" ; then
-             GPGME_CONFIG="${SYSROOT}/bin/gpgme-config"
-           fi
-           ;;
-         '')
-           ;;
-          *)
-           AC_MSG_WARN([Ignoring \$SYSROOT as it is not an absolute path.])
-           ;;
-       esac
-     fi
-  fi
-
-  AC_PATH_PROG(GPGME_CONFIG, gpgme-config, no)
-
-  if test "$GPGME_CONFIG" != "no" ; then
-    gpgme_version=`$GPGME_CONFIG --version`
-  fi
-  gpgme_version_major=`echo $gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\).*/\1/'`
-  gpgme_version_minor=`echo $gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\).*/\2/'`
-  gpgme_version_micro=`echo $gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\).*/\3/'`
-])
-
-
-AC_DEFUN([_AM_PATH_GPGME_CONFIG_HOST_CHECK],
-[
-    gpgme_config_host=`$GPGME_CONFIG --host 2>/dev/null || echo none`
-    if test x"$gpgme_config_host" != xnone ; then
-      if test x"$gpgme_config_host" != x"$host" ; then
-  AC_MSG_WARN([[
-***
-*** The config script $GPGME_CONFIG was
-*** built for $gpgme_config_host and thus may not match the
-*** used host $host.
-*** You may want to use the configure option --with-gpgme-prefix
-*** to specify a matching config script or use \$SYSROOT.
-***]])
-        gpg_config_script_warn="$gpg_config_script_warn gpgme"
-      fi
-    fi
-])
-
-
-dnl AM_PATH_GPGME([MINIMUM-VERSION,
-dnl               [ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND ]]])
-dnl Test for libgpgme and define GPGME_CFLAGS and GPGME_LIBS.
-dnl
-dnl If a prefix option is not used, the config script is first
-dnl searched in $SYSROOT/bin and then along $PATH.  If the used
-dnl config script does not match the host specification the script
-dnl is added to the gpg_config_script_warn variable.
-dnl
-AC_DEFUN([AM_PATH_GPGME],
-[ AC_REQUIRE([_AM_PATH_GPGME_CONFIG])dnl
-  tmp=ifelse([$1], ,1:0.4.2,$1)
-  if echo "$tmp" | grep ':' >/dev/null 2>/dev/null ; then
-     req_gpgme_api=`echo "$tmp"     | sed 's/\(.*\):\(.*\)/\1/'`
-     min_gpgme_version=`echo "$tmp" | sed 's/\(.*\):\(.*\)/\2/'`
-  else
-     req_gpgme_api=0
-     min_gpgme_version="$tmp"
-  fi
-
-  AC_MSG_CHECKING(for GPGME - version >= $min_gpgme_version)
-  ok=no
-  if test "$GPGME_CONFIG" != "no" ; then
-    req_major=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\1/'`
-    req_minor=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\2/'`
-    req_micro=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\3/'`
-    if test "$gpgme_version_major" -gt "$req_major"; then
-        ok=yes
-    else
-        if test "$gpgme_version_major" -eq "$req_major"; then
-            if test "$gpgme_version_minor" -gt "$req_minor"; then
-               ok=yes
-            else
-               if test "$gpgme_version_minor" -eq "$req_minor"; then
-                   if test "$gpgme_version_micro" -ge "$req_micro"; then
-                     ok=yes
-                   fi
-               fi
-            fi
-        fi
-    fi
-  fi
-  if test $ok = yes; then
-     # If we have a recent GPGME, we should also check that the
-     # API is compatible.
-     if test "$req_gpgme_api" -gt 0 ; then
-        tmp=`$GPGME_CONFIG --api-version 2>/dev/null || echo 0`
-        if test "$tmp" -gt 0 ; then
-           if test "$req_gpgme_api" -ne "$tmp" ; then
-             ok=no
-           fi
-        fi
-     fi
-  fi
-  if test $ok = yes; then
-    GPGME_CFLAGS=`$GPGME_CONFIG --cflags`
-    GPGME_LIBS=`$GPGME_CONFIG --libs`
-    AC_MSG_RESULT(yes)
-    ifelse([$2], , :, [$2])
-    _AM_PATH_GPGME_CONFIG_HOST_CHECK
-  else
-    GPGME_CFLAGS=""
-    GPGME_LIBS=""
-    AC_MSG_RESULT(no)
-    ifelse([$3], , :, [$3])
-  fi
-  AC_SUBST(GPGME_CFLAGS)
-  AC_SUBST(GPGME_LIBS)
-])
-
-dnl AM_PATH_GPGME_PTHREAD([MINIMUM-VERSION,
-dnl                       [ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND ]]])
-dnl Test for libgpgme and define GPGME_PTHREAD_CFLAGS
-dnl  and GPGME_PTHREAD_LIBS.
-dnl
-AC_DEFUN([AM_PATH_GPGME_PTHREAD],
-[ AC_REQUIRE([_AM_PATH_GPGME_CONFIG])dnl
-  tmp=ifelse([$1], ,1:0.4.2,$1)
-  if echo "$tmp" | grep ':' >/dev/null 2>/dev/null ; then
-     req_gpgme_api=`echo "$tmp"     | sed 's/\(.*\):\(.*\)/\1/'`
-     min_gpgme_version=`echo "$tmp" | sed 's/\(.*\):\(.*\)/\2/'`
-  else
-     req_gpgme_api=0
-     min_gpgme_version="$tmp"
-  fi
-
-  AC_MSG_CHECKING(for GPGME pthread - version >= $min_gpgme_version)
-  ok=no
-  if test "$GPGME_CONFIG" != "no" ; then
-    if `$GPGME_CONFIG --thread=pthread 2> /dev/null` ; then
-      req_major=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\1/'`
-      req_minor=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\2/'`
-      req_micro=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\3/'`
-      if test "$gpgme_version_major" -gt "$req_major"; then
-        ok=yes
-      else
-        if test "$gpgme_version_major" -eq "$req_major"; then
-          if test "$gpgme_version_minor" -gt "$req_minor"; then
-            ok=yes
-          else
-            if test "$gpgme_version_minor" -eq "$req_minor"; then
-              if test "$gpgme_version_micro" -ge "$req_micro"; then
-                ok=yes
-              fi
-            fi
-          fi
-        fi
-      fi
-    fi
-  fi
-  if test $ok = yes; then
-     # If we have a recent GPGME, we should also check that the
-     # API is compatible.
-     if test "$req_gpgme_api" -gt 0 ; then
-        tmp=`$GPGME_CONFIG --api-version 2>/dev/null || echo 0`
-        if test "$tmp" -gt 0 ; then
-           if test "$req_gpgme_api" -ne "$tmp" ; then
-             ok=no
-           fi
-        fi
-     fi
-  fi
-  if test $ok = yes; then
-    GPGME_PTHREAD_CFLAGS=`$GPGME_CONFIG --thread=pthread --cflags`
-    GPGME_PTHREAD_LIBS=`$GPGME_CONFIG --thread=pthread --libs`
-    AC_MSG_RESULT(yes)
-    ifelse([$2], , :, [$2])
-    _AM_PATH_GPGME_CONFIG_HOST_CHECK
-  else
-    GPGME_PTHREAD_CFLAGS=""
-    GPGME_PTHREAD_LIBS=""
-    AC_MSG_RESULT(no)
-    ifelse([$3], , :, [$3])
-  fi
-  AC_SUBST(GPGME_PTHREAD_CFLAGS)
-  AC_SUBST(GPGME_PTHREAD_LIBS)
-])
-
-
-dnl AM_PATH_GPGME_GLIB([MINIMUM-VERSION,
-dnl               [ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND ]]])
-dnl Test for libgpgme-glib and define GPGME_GLIB_CFLAGS and GPGME_GLIB_LIBS.
-dnl
-AC_DEFUN([AM_PATH_GPGME_GLIB],
-[ AC_REQUIRE([_AM_PATH_GPGME_CONFIG])dnl
-  tmp=ifelse([$1], ,1:0.4.2,$1)
-  if echo "$tmp" | grep ':' >/dev/null 2>/dev/null ; then
-     req_gpgme_api=`echo "$tmp"     | sed 's/\(.*\):\(.*\)/\1/'`
-     min_gpgme_version=`echo "$tmp" | sed 's/\(.*\):\(.*\)/\2/'`
-  else
-     req_gpgme_api=0
-     min_gpgme_version="$tmp"
-  fi
-
-  AC_MSG_CHECKING(for GPGME - version >= $min_gpgme_version)
-  ok=no
-  if test "$GPGME_CONFIG" != "no" ; then
-    req_major=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\1/'`
-    req_minor=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\2/'`
-    req_micro=`echo $min_gpgme_version | \
-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\3/'`
-    if test "$gpgme_version_major" -gt "$req_major"; then
-        ok=yes
-    else
-        if test "$gpgme_version_major" -eq "$req_major"; then
-            if test "$gpgme_version_minor" -gt "$req_minor"; then
-               ok=yes
-            else
-               if test "$gpgme_version_minor" -eq "$req_minor"; then
-                   if test "$gpgme_version_micro" -ge "$req_micro"; then
-                     ok=yes
-                   fi
-               fi
-            fi
-        fi
-    fi
-  fi
-  if test $ok = yes; then
-     # If we have a recent GPGME, we should also check that the
-     # API is compatible.
-     if test "$req_gpgme_api" -gt 0 ; then
-        tmp=`$GPGME_CONFIG --api-version 2>/dev/null || echo 0`
-        if test "$tmp" -gt 0 ; then
-           if test "$req_gpgme_api" -ne "$tmp" ; then
-             ok=no
-           fi
-        fi
-     fi
-  fi
-  if test $ok = yes; then
-    GPGME_GLIB_CFLAGS=`$GPGME_CONFIG --glib --cflags`
-    GPGME_GLIB_LIBS=`$GPGME_CONFIG --glib --libs`
-    AC_MSG_RESULT(yes)
-    ifelse([$2], , :, [$2])
-    _AM_PATH_GPGME_CONFIG_HOST_CHECK
-  else
-    GPGME_GLIB_CFLAGS=""
-    GPGME_GLIB_LIBS=""
-    AC_MSG_RESULT(no)
-    ifelse([$3], , :, [$3])
-  fi
-  AC_SUBST(GPGME_GLIB_CFLAGS)
-  AC_SUBST(GPGME_GLIB_LIBS)
-])
-
 dnl pkg.m4 - Macros to locate and utilise pkg-config.   -*- Autoconf -*-
-dnl serial 11 (pkg-config-0.29)
+dnl serial 11 (pkg-config-0.29.1)
 dnl
 dnl Copyright © 2004 Scott James Remnant <scott@netsplit.com>.
 dnl Copyright © 2012-2015 Dan Nicholson <dbn.lists@gmail.com>
@@ -347,7 +63,7 @@ dnl
 dnl See the "Since" comment for each macro you use to see what version
 dnl of the macros you require.
 m4_defun([PKG_PREREQ],
-[m4_define([PKG_MACROS_VERSION], [0.29])
+[m4_define([PKG_MACROS_VERSION], [0.29.1])
 m4_if(m4_version_compare(PKG_MACROS_VERSION, [$1]), -1,
     [m4_fatal([pkg.m4 version $1 or higher is required but ]PKG_MACROS_VERSION[ found])])
 ])dnl PKG_PREREQ
@@ -615,66 +331,6 @@ AC_DEFUN([AM_SET_CURRENT_AUTOMAKE_VERSION],
 m4_ifndef([AC_AUTOCONF_VERSION],
   [m4_copy([m4_PACKAGE_VERSION], [AC_AUTOCONF_VERSION])])dnl
 _AM_AUTOCONF_VERSION(m4_defn([AC_AUTOCONF_VERSION]))])
-
-# Copyright (C) 2011-2017 Free Software Foundation, Inc.
-#
-# This file is free software; the Free Software Foundation
-# gives unlimited permission to copy and/or distribute it,
-# with or without modifications, as long as this notice is preserved.
-
-# AM_PROG_AR([ACT-IF-FAIL])
-# -------------------------
-# Try to determine the archiver interface, and trigger the ar-lib wrapper
-# if it is needed.  If the detection of archiver interface fails, run
-# ACT-IF-FAIL (default is to abort configure with a proper error message).
-AC_DEFUN([AM_PROG_AR],
-[AC_BEFORE([$0], [LT_INIT])dnl
-AC_BEFORE([$0], [AC_PROG_LIBTOOL])dnl
-AC_REQUIRE([AM_AUX_DIR_EXPAND])dnl
-AC_REQUIRE_AUX_FILE([ar-lib])dnl
-AC_CHECK_TOOLS([AR], [ar lib "link -lib"], [false])
-: ${AR=ar}
-
-AC_CACHE_CHECK([the archiver ($AR) interface], [am_cv_ar_interface],
-  [AC_LANG_PUSH([C])
-   am_cv_ar_interface=ar
-   AC_COMPILE_IFELSE([AC_LANG_SOURCE([[int some_variable = 0;]])],
-     [am_ar_try='$AR cru libconftest.a conftest.$ac_objext >&AS_MESSAGE_LOG_FD'
-      AC_TRY_EVAL([am_ar_try])
-      if test "$ac_status" -eq 0; then
-        am_cv_ar_interface=ar
-      else
-        am_ar_try='$AR -NOLOGO -OUT:conftest.lib conftest.$ac_objext >&AS_MESSAGE_LOG_FD'
-        AC_TRY_EVAL([am_ar_try])
-        if test "$ac_status" -eq 0; then
-          am_cv_ar_interface=lib
-        else
-          am_cv_ar_interface=unknown
-        fi
-      fi
-      rm -f conftest.lib libconftest.a
-     ])
-   AC_LANG_POP([C])])
-
-case $am_cv_ar_interface in
-ar)
-  ;;
-lib)
-  # Microsoft lib, so override with the ar-lib wrapper script.
-  # FIXME: It is wrong to rewrite AR.
-  # But if we don't then we get into trouble of one sort or another.
-  # A longer-term fix would be to have automake use am__AR in this case,
-  # and then we could set am__AR="$am_aux_dir/ar-lib \$(AR)" or something
-  # similar.
-  AR="$am_aux_dir/ar-lib $AR"
-  ;;
-unknown)
-  m4_default([$1],
-             [AC_MSG_ERROR([could not determine $AR interface])])
-  ;;
-esac
-AC_SUBST([AR])dnl
-])
 
 # AM_AUX_DIR_EXPAND                                         -*- Autoconf -*-
 
@@ -1354,6 +1010,38 @@ else
 fi
 ])
 
+# Copyright (C) 2003-2017 Free Software Foundation, Inc.
+#
+# This file is free software; the Free Software Foundation
+# gives unlimited permission to copy and/or distribute it,
+# with or without modifications, as long as this notice is preserved.
+
+# AM_PROG_MKDIR_P
+# ---------------
+# Check for 'mkdir -p'.
+AC_DEFUN([AM_PROG_MKDIR_P],
+[AC_PREREQ([2.60])dnl
+AC_REQUIRE([AC_PROG_MKDIR_P])dnl
+dnl FIXME we are no longer going to remove this! adjust warning
+dnl FIXME message accordingly.
+AC_DIAGNOSE([obsolete],
+[$0: this macro is deprecated, and will soon be removed.
+You should use the Autoconf-provided 'AC][_PROG_MKDIR_P' macro instead,
+and use '$(MKDIR_P)' instead of '$(mkdir_p)'in your Makefile.am files.])
+dnl Automake 1.8 to 1.9.6 used to define mkdir_p.  We now use MKDIR_P,
+dnl while keeping a definition of mkdir_p for backward compatibility.
+dnl @MKDIR_P@ is magic: AC_OUTPUT adjusts its value for each Makefile.
+dnl However we cannot define mkdir_p as $(MKDIR_P) for the sake of
+dnl Makefile.ins that do not define MKDIR_P, so we do our own
+dnl adjustment using top_builddir (which is defined more often than
+dnl MKDIR_P).
+AC_SUBST([mkdir_p], ["$MKDIR_P"])dnl
+case $mkdir_p in
+  [[\\/$]]* | ?:[[\\/]]*) ;;
+  */*) mkdir_p="\$(top_builddir)/$mkdir_p" ;;
+esac
+])
+
 # Helper functions for option handling.                     -*- Autoconf -*-
 
 # Copyright (C) 2001-2017 Free Software Foundation, Inc.
@@ -2007,17 +1695,19 @@ AC_SUBST([am__untar])
 ]) # _AM_PROG_TAR
 
 m4_include([m4/00gnulib.m4])
+m4_include([m4/__inline.m4])
 m4_include([m4/absolute-header.m4])
+m4_include([m4/af_alg.m4])
 m4_include([m4/alloca.m4])
 m4_include([m4/arpa_inet_h.m4])
 m4_include([m4/asm-underscore.m4])
 m4_include([m4/base32.m4])
 m4_include([m4/btowc.m4])
 m4_include([m4/builtin-expect.m4])
+m4_include([m4/byteswap.m4])
 m4_include([m4/clock_time.m4])
 m4_include([m4/close.m4])
 m4_include([m4/codeset.m4])
-m4_include([m4/configmake.m4])
 m4_include([m4/dirname.m4])
 m4_include([m4/double-slash-root.m4])
 m4_include([m4/dup2.m4])
@@ -2032,11 +1722,15 @@ m4_include([m4/fatal-signal.m4])
 m4_include([m4/fcntl-o.m4])
 m4_include([m4/fcntl.m4])
 m4_include([m4/fcntl_h.m4])
+m4_include([m4/fflush.m4])
 m4_include([m4/flexmember.m4])
 m4_include([m4/float_h.m4])
 m4_include([m4/flock.m4])
 m4_include([m4/fnmatch.m4])
+m4_include([m4/fnmatch_h.m4])
 m4_include([m4/fopen.m4])
+m4_include([m4/fpurge.m4])
+m4_include([m4/freading.m4])
 m4_include([m4/fseek.m4])
 m4_include([m4/fseeko.m4])
 m4_include([m4/fstat.m4])
@@ -2059,7 +1753,7 @@ m4_include([m4/glibc21.m4])
 m4_include([m4/gnulib-common.m4])
 m4_include([m4/gnulib-comp.m4])
 m4_include([m4/group-member.m4])
-m4_include([m4/hard-locale.m4])
+m4_include([m4/host-cpu-c-abi.m4])
 m4_include([m4/hostent.m4])
 m4_include([m4/iconv.m4])
 m4_include([m4/iconv_h.m4])
@@ -2089,11 +1783,13 @@ m4_include([m4/locale-ja.m4])
 m4_include([m4/locale-zh.m4])
 m4_include([m4/locale_h.m4])
 m4_include([m4/localeconv.m4])
+m4_include([m4/localtime-buffer.m4])
 m4_include([m4/lock.m4])
 m4_include([m4/longlong.m4])
 m4_include([m4/lseek.m4])
 m4_include([m4/lstat.m4])
 m4_include([m4/malloc.m4])
+m4_include([m4/malloca.m4])
 m4_include([m4/mbchar.m4])
 m4_include([m4/mbiter.m4])
 m4_include([m4/mbrtowc.m4])
@@ -2122,6 +1818,7 @@ m4_include([m4/nl_langinfo.m4])
 m4_include([m4/nls.m4])
 m4_include([m4/nocrash.m4])
 m4_include([m4/off_t.m4])
+m4_include([m4/open-cloexec.m4])
 m4_include([m4/open.m4])
 m4_include([m4/pathmax.m4])
 m4_include([m4/pipe.m4])
@@ -2139,6 +1836,7 @@ m4_include([m4/sched_h.m4])
 m4_include([m4/secure_getenv.m4])
 m4_include([m4/select.m4])
 m4_include([m4/servent.m4])
+m4_include([m4/sh-filename.m4])
 m4_include([m4/sha1.m4])
 m4_include([m4/sha256.m4])
 m4_include([m4/sha512.m4])
@@ -2158,6 +1856,7 @@ m4_include([m4/spawn_h.m4])
 m4_include([m4/ssize_t.m4])
 m4_include([m4/stat-time.m4])
 m4_include([m4/stat.m4])
+m4_include([m4/std-gnu11.m4])
 m4_include([m4/stdalign.m4])
 m4_include([m4/stdbool.m4])
 m4_include([m4/stddef_h.m4])
@@ -2177,6 +1876,7 @@ m4_include([m4/strnlen.m4])
 m4_include([m4/strpbrk.m4])
 m4_include([m4/strptime.m4])
 m4_include([m4/strtok_r.m4])
+m4_include([m4/strtol.m4])
 m4_include([m4/strtoll.m4])
 m4_include([m4/symlink.m4])
 m4_include([m4/sys_file_h.m4])
@@ -2200,7 +1900,8 @@ m4_include([m4/unistd-safer.m4])
 m4_include([m4/unistd_h.m4])
 m4_include([m4/unlink.m4])
 m4_include([m4/unlocked-io.m4])
-m4_include([m4/utimbuf.m4])
+m4_include([m4/utime.m4])
+m4_include([m4/utime_h.m4])
 m4_include([m4/utimens.m4])
 m4_include([m4/utimes.m4])
 m4_include([m4/vasnprintf.m4])

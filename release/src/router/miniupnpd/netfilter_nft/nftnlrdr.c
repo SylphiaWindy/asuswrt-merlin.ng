@@ -1,8 +1,9 @@
 /*
+ * vim: tabstop=4 shiftwidth=4 noexpandtab
  * MiniUPnP project
  * http://miniupnp.free.fr/ or http://miniupnp.tuxfamily.org/
  * (c) 2015 Tomofumi Hayashi
- * 
+ *
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution.
  */
@@ -45,6 +46,16 @@
 #define d_printf(x)
 #endif
 
+/* list to keep timestamps for port mappings having a lease duration */
+struct timestamp_entry {
+	struct timestamp_entry * next;
+	unsigned int timestamp;
+	unsigned short eport;
+	short protocol;
+};
+
+static struct timestamp_entry * timestamp_list = NULL;
+
 /* dummy init and shutdown functions */
 int init_redirect(void)
 {
@@ -56,6 +67,57 @@ void shutdown_redirect(void)
 	return;
 }
 
+static unsigned int
+get_timestamp(unsigned short eport, int proto)
+{
+	struct timestamp_entry * e;
+	e = timestamp_list;
+	while(e) {
+		if(e->eport == eport && e->protocol == (short)proto)
+			return e->timestamp;
+		e = e->next;
+	}
+	return 0;
+}
+
+static void
+remove_timestamp_entry(unsigned short eport, int proto)
+{
+	struct timestamp_entry * e;
+	struct timestamp_entry * * p;
+	p = &timestamp_list;
+	e = *p;
+	while(e) {
+		if(e->eport == eport && e->protocol == (short)proto) {
+			/* remove the entry */
+			*p = e->next;
+			free(e);
+			return;
+		}
+		p = &(e->next);
+		e = *p;
+	}
+}
+
+static void
+add_timestamp_entry(unsigned short eport, int proto, unsigned timestamp)
+{
+	struct timestamp_entry * tmp;
+	tmp = malloc(sizeof(struct timestamp_entry));
+	if(tmp)
+	{
+		tmp->next = timestamp_list;
+		tmp->timestamp = timestamp;
+		tmp->eport = eport;
+		tmp->protocol = (short)proto;
+		timestamp_list = tmp;
+	}
+	else
+	{
+		syslog(LOG_ERR, "add_timestamp_entry() malloc(%lu) error",
+		       sizeof(struct timestamp_entry));
+	}
+}
 
 int
 add_redirect_rule2(const char * ifname,
@@ -63,21 +125,22 @@ add_redirect_rule2(const char * ifname,
 		   const char * iaddr, unsigned short iport, int proto,
 		   const char * desc, unsigned int timestamp)
 {
-	struct nft_rule *r;
+	struct nftnl_rule *r;
 	UNUSED(rhost);
 	UNUSED(timestamp);
-        d_printf(("add redirect rule2(%s, %s, %u, %s, %u, %d, %s)!\n",
+
+	d_printf(("add redirect rule2(%s, %s, %u, %s, %u, %d, %s)!\n",
 	          ifname, rhost, eport, iaddr, iport, proto, desc));
 	r = rule_set_dnat(NFPROTO_IPV4, ifname, proto,
-			  0, eport, 
+			  0, eport,
 			  inet_addr(iaddr), iport,  desc, NULL);
 	return nft_send_request(r, NFT_MSG_NEWRULE);
 }
 
 /*
- * This function submit the rule as following: 
- * nft add rule nat miniupnpd-pcp-peer ip 
- *    saddr <iaddr> ip daddr <rhost> tcp sport <iport> 
+ * This function submit the rule as following:
+ * nft add rule nat miniupnpd-pcp-peer ip
+ *    saddr <iaddr> ip daddr <rhost> tcp sport <iport>
  *    tcp dport <rport> snat <eaddr>:<eport>
  */
 int
@@ -87,23 +150,23 @@ add_peer_redirect_rule2(const char * ifname,
 			const char * iaddr, unsigned short iport, int proto,
 			const char * desc, unsigned int timestamp)
 {
-	struct nft_rule *r;
+	struct nftnl_rule *r;
 	UNUSED(ifname); UNUSED(timestamp);
 
-        d_printf(("add peer redirect rule2()!\n"));
-	r = rule_set_snat(NFPROTO_IPV4, proto, 
-			  inet_addr(rhost), rport, 
-			  inet_addr(eaddr), eport, 
+	d_printf(("add peer redirect rule2()!\n"));
+	r = rule_set_snat(NFPROTO_IPV4, proto,
+			  inet_addr(rhost), rport,
+			  inet_addr(eaddr), eport,
 			  inet_addr(iaddr), iport, desc, NULL);
 
 	return nft_send_request(r, NFT_MSG_NEWRULE);
 }
 
 /*
- * This function submit the rule as following: 
- * nft add rule filter miniupnpd 
+ * This function submit the rule as following:
+ * nft add rule filter miniupnpd
  *    ip daddr <iaddr> tcp dport <iport> accept
- * 
+ *
  */
 int
 add_filter_rule2(const char * ifname,
@@ -111,14 +174,14 @@ add_filter_rule2(const char * ifname,
 		 unsigned short eport, unsigned short iport,
 		 int proto, const char * desc)
 {
-	struct nft_rule *r = NULL;
+	struct nftnl_rule *r = NULL;
 	in_addr_t rhost_addr = 0;
 
 	d_printf(("add_filter_rule2(%s, %s, %s, %d, %d, %d, %s)\n",
 	          ifname, rhost, iaddr, eport, iport, proto, desc));
 	if (rhost != NULL && strcmp(rhost, "") != 0) {
-            rhost_addr = inet_addr(rhost);
-        }
+		rhost_addr = inet_addr(rhost);
+	}
 	r = rule_set_filter(NFPROTO_IPV4, ifname, proto,
 			    rhost_addr, inet_addr(iaddr), eport, iport,
 			    desc, 0);
@@ -136,10 +199,30 @@ add_peer_dscp_rule2(const char * ifname,
 		    const char * iaddr, unsigned short iport, int proto,
 		    const char * desc, unsigned int timestamp)
 {
-	UNUSED(ifname); UNUSED(rhost); UNUSED(rport); 
+	UNUSED(ifname); UNUSED(rhost); UNUSED(rport);
 	UNUSED(dscp); UNUSED(iaddr); UNUSED(iport); UNUSED(proto);
 	UNUSED(desc); UNUSED(timestamp);
 	syslog(LOG_ERR, "add_peer_dscp_rule2: not supported");
+	return 0;
+}
+
+int
+delete_filter_rule(const char * ifname, unsigned short port, int proto)
+{
+	rule_t *p;
+	struct nftnl_rule *r;
+	UNUSED(ifname);
+
+	reflesh_nft_cache(NFPROTO_IPV4);
+	LIST_FOREACH(p, &head, entry) {
+		if (p->eport == port && p->proto == proto && p->type == RULE_FILTER) {
+			r = rule_del_handle(p);
+			/* Todo: send bulk request */
+			nft_send_request(r, NFT_MSG_DELRULE);
+			break;
+		}
+	}
+
 	return 0;
 }
 
@@ -150,15 +233,15 @@ int
 delete_redirect_and_filter_rules(unsigned short eport, int proto)
 {
 	rule_t *p;
-	struct nft_rule *r = NULL;
-        in_addr_t iaddr = 0;
-        uint16_t iport = 0;
-        extern void print_rule(rule_t *r) ;
+	struct nftnl_rule *r = NULL;
+	in_addr_t iaddr = 0;
+	uint16_t iport = 0;
+	extern void print_rule(rule_t *r) ;
 
 	d_printf(("delete_redirect_and_filter_rules(%d %d)\n", eport, proto));
 	reflesh_nft_cache(NFPROTO_IPV4);
 	LIST_FOREACH(p, &head, entry) {
-		if (p->eport == eport && p->proto == proto && 
+		if (p->eport == eport && p->proto == proto &&
 		    (p->type == RULE_NAT || p->type == RULE_SNAT)) {
 			iaddr = p->iaddr;
 			iport = p->iport;
@@ -175,7 +258,7 @@ delete_redirect_and_filter_rules(unsigned short eport, int proto)
 	}
 	reflesh_nft_cache(NFPROTO_IPV4);
 	LIST_FOREACH(p, &head, entry) {
-		if (p->eport == iport && 
+		if (p->eport == iport &&
 		    p->iaddr == iaddr && p->type == RULE_FILTER) {
 			r = rule_del_handle(p);
 			/* Todo: send bulk request */
@@ -187,8 +270,8 @@ delete_redirect_and_filter_rules(unsigned short eport, int proto)
 	return 0;
 }
 
-/* 
- * get peer by index as array. 
+/*
+ * get peer by index as array.
  * return -1 when not found.
  */
 int
@@ -206,7 +289,7 @@ get_peer_rule_by_index(int index,
 	rule_t *r;
 	UNUSED(timestamp); UNUSED(packets); UNUSED(bytes);
 
-        d_printf(("get_peer_rule_by_index()\n"));
+	d_printf(("get_peer_rule_by_index()\n"));
 	reflesh_nft_cache(NFPROTO_IPV4);
 	if (peer_cache == NULL) {
 		return -1;
@@ -244,8 +327,8 @@ get_peer_rule_by_index(int index,
 				strncpy(desc, r->desc, desclen);
 			}
 
-			/* 
-			 * TODO: Implement counter in case of add {nat,filter} 
+			/*
+			 * TODO: Implement counter in case of add {nat,filter}
 			 */
 			return 0;
 		}
@@ -253,9 +336,9 @@ get_peer_rule_by_index(int index,
 	return -1;
 }
 
-/* 
+/*
  * get_redirect_rule()
- * returns -1 if the rule is not found 
+ * returns -1 if the rule is not found
  */
 int
 get_redirect_rule(const char * ifname, unsigned short eport, int proto,
@@ -275,7 +358,7 @@ get_redirect_rule(const char * ifname, unsigned short eport, int proto,
 
 /*
  * get_redirect_rule_by_index()
- * return -1 when the rule was not found 
+ * return -1 when the rule was not found
  */
 int
 get_redirect_rule_by_index(int index,
@@ -327,7 +410,11 @@ get_redirect_rule_by_index(int index,
 				strncpy(desc, r->desc, desclen);
 			}
 
-			/* 
+			if (timestamp != NULL) {
+				*timestamp = get_timestamp(*eport, *proto);
+			}
+
+			/*
 			 * TODO: Implement counter in case of add {nat,filter}
 			 */
 			return 0;
@@ -375,6 +462,10 @@ get_nat_redirect_rule(const char * nat_chain_name, const char * ifname,
 				strncpy(desc, p->desc, desclen);
 			}
 			*iport = p->iport;
+
+			if(timestamp != NULL)
+				*timestamp = get_timestamp(eport, proto);
+
 			return 0;
 		}
 	}
@@ -382,9 +473,9 @@ get_nat_redirect_rule(const char * nat_chain_name, const char * ifname,
 	return -1;
 }
 
-/* 
+/*
  * return an (malloc'ed) array of "external" port for which there is
- * a port mapping. number is the size of the array 
+ * a port mapping. number is the size of the array
  */
 unsigned short *
 get_portmappings_in_range(unsigned short startport, unsigned short endport,
@@ -407,11 +498,11 @@ get_portmappings_in_range(unsigned short startport, unsigned short endport,
 
 	LIST_FOREACH(p, &head, entry) {
 		if (p->proto == proto &&
-		    startport <= p->eport && 
+		    startport <= p->eport &&
 		    p->eport <= endport) {
 
 			if (*number >= capacity) {
-				tmp = realloc(array, 
+				tmp = realloc(array,
 					      sizeof(unsigned short)*capacity);
 				if (tmp == NULL) {
 					syslog(LOG_ERR,
@@ -420,7 +511,7 @@ get_portmappings_in_range(unsigned short startport, unsigned short endport,
 					       (unsigned)sizeof(unsigned short)*capacity);
 					*number = 0;
 					free(array);
-					return NULL;   
+					return NULL;
 				}
 				array = tmp;
 			}
@@ -429,6 +520,46 @@ get_portmappings_in_range(unsigned short startport, unsigned short endport,
 		}
 	}
 	return array;
+}
+
+int
+update_portmapping_desc_timestamp(const char * ifname,
+                   unsigned short eport, int proto,
+                   const char * desc, unsigned int timestamp)
+{
+	UNUSED(ifname);
+	UNUSED(desc);
+	remove_timestamp_entry(eport, proto);
+	add_timestamp_entry(eport, proto, timestamp);
+	return 0;
+}
+
+int
+update_portmapping(const char * ifname, unsigned short eport, int proto,
+                   unsigned short iport, const char * desc,
+                   unsigned int timestamp)
+{
+	char iaddr[4];
+	char iaddr_str[16];
+	char rhost[32];
+	int r;
+
+	if (get_redirect_rule(NULL, eport, proto, iaddr, 0, NULL, NULL, 0, rhost, 0, NULL, 0, 0) < 0)
+		return -1;
+
+	r = delete_redirect_and_filter_rules(eport, proto);
+	if (r < 0)
+		return -1;
+
+	inet_ntop(AF_INET, &iaddr, iaddr_str, sizeof(iaddr_str));
+
+	if(add_redirect_rule2(ifname, rhost, eport, iaddr_str, iport, proto,
+						  desc, timestamp) < 0)
+		return -1;
+	if(add_filter_rule2(ifname, rhost, iaddr_str, eport, iport, proto, desc) < 0)
+		return -1;
+
+	return 0;
 }
 
 /* for debug */

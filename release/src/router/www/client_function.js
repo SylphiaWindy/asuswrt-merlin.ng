@@ -107,7 +107,6 @@ var totalClientNum = {
 }
 
 var setClientAttr = function(){
-	this.hostname = "";
 	this.type = "0";
 	this.defaultType = "0";
 	this.name = "";
@@ -278,6 +277,7 @@ function genClientList(){
 				var thisClientDefaultType = (typeof thisClient.defaultType == "undefined") ? thisClientType : thisClient.defaultType;
 				var thisClientName = (typeof thisClient.name == "undefined") ? thisClientMacAddr : (thisClient.name.trim() == "") ? thisClientMacAddr : thisClient.name.trim();
 				var thisClientNickName = (typeof thisClient.nickName == "undefined") ? "" : (thisClient.nickName.trim() == "") ? "" : thisClient.nickName.trim();
+				var thisClientReNode = (typeof thisClient.amesh_isRe == "undefined") ? false : ((thisClient.amesh_isRe == "1") ? true : false);
 
 				clientList.push(thisClientMacAddr);
 				clientList[thisClientMacAddr] = new setClientAttr();
@@ -290,6 +290,8 @@ function genClientList(){
 				clientList[thisClientMacAddr].name = thisClientName;
 				clientList[thisClientMacAddr].nickName = thisClientNickName;
 				clientList[thisClientMacAddr].vendor = thisClient.vendor.trim();
+				if(amesh_support)
+					clientList[thisClientMacAddr].amesh_isRe = thisClientReNode;
 				nmpCount++;
 			}
 			else if(!clientList[thisClientMacAddr].isOnline) {
@@ -590,7 +592,7 @@ function popClientListEditTable(event) {
 			cell.id = "tbCardClientListIcon" + (colIndex + (rowIndex * 7));
 			var idx = (colIndex + (rowIndex * eachColCount));
 			if(clientListIconArray[colIndex + (rowIndex * eachColCount)] != undefined) {
-				cell.innerHTML = '<div class="type' + clientListIconArray[idx][1] + '" onclick="select_image(this.className,\''+clientInfo.vendor+'\');" title="' + clientListIconArray[idx][0] + '"></div>';
+				cell.innerHTML = '<div class="type' + clientListIconArray[idx][1] + '" onclick="select_image(this.className,\''+clientInfo.vendor.replace("'","\\'")+'\');"  title="' + clientListIconArray[idx][0] + '"></div>';
 			}
 			else {
 				if(usericon_support) {
@@ -1023,6 +1025,10 @@ function card_confirm(callBack) {
 							case "WTFast" :
 								showDropdownClientList('setClientmac', 'mac', 'all', 'ClientList_Block_PC', 'pull_arrow', 'all');
 								show_rulelist();
+								break;
+							case "RoamingBlock" :
+								showDropdownClientList('setClientmac', 'mac', 'wl', 'WL_MAC_List_Block', 'pull_arrow', 'all');
+								show_wl_maclist_x();
 								break;
 							default :
 								refreshpage();
@@ -2543,6 +2549,8 @@ function showDropdownClientList(_callBackFun, _callBackFunParam, _interfaceMode,
 
 	for(var i = 0; i < clientList.length; i +=1 ) {
 		var clientObj = clientList[clientList[i]];
+		if(clientObj.amesh_isRe)
+			continue;
 		switch(_clientState) {
 			case "all" :
 				if(_interfaceMode == "wl" && (clientList[clientList[i]].isWL == 0)) {

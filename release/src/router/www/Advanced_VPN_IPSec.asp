@@ -617,7 +617,7 @@ function cancel_viewLog() {
 }
 function clear_viewLog() {
 	document.clearLog.submit();
-	document.getElementById("textarea").innerText = "";
+	document.getElementById("textarea").innerHTML = "";
 }
 function save_viewLog() {
 	location.href = "ipsec.log";
@@ -637,7 +637,7 @@ function update_ipsec_log() {
 		success: function(xml) {
 			var ipsecXML = xml.getElementsByTagName("ipsec");
 			var ipsec_log = ipsecXML[0].firstChild.nodeValue;
-			document.getElementById("textarea").innerText = ipsec_log;
+			document.getElementById("textarea").innerHTML = ipsec_log;
 		}
 	});	
 }
@@ -771,7 +771,7 @@ function showIPSecClients(profileName, e) {
 									<div>&nbsp;</div>
 									<div class="formfonttitle"><#BOP_isp_heart_item#> - IPSec VPN<!--untranslated--></div>
 									<div id="divSwitchMenu" style="margin-top:-40px;float:right;"></div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div id="privateIP_notes" class="formfontdesc" style="display:none;color:#FFCC00;"></div>
 									<div class="formfontdesc">
 										<span style="color:#FC0">Note: On iOS or MacOS system, please select "Cisco IPSec". On Android system, please select "IPSec / Xauth PSK".<!--untranslated--></span>
@@ -911,7 +911,7 @@ function showIPSecClients(profileName, e) {
 											</tr>
 											</thead>
 											<tr>
-												<th><#HSDPAConfig_Username_itemname#></th>
+												<th><#Username#></th>
 												<th><#HSDPAConfig_Password_itemname#></th>
 												<th><#list_add_delete#></th>
 											</tr>

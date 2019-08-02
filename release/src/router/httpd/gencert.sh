@@ -1,14 +1,14 @@
 #!/bin/sh
 
-if [ "$1" == "web" -o "$1" == "ftp" ]
-then
-        SERVICE=$1
-else
-        SERVICE="web"
-fi
-
 PID=$$
 SECS=1262278080
+
+if [ -f /usr/sbin/openssl11 ]
+then
+	OPENSSL=/usr/sbin/openssl11
+else
+	OPENSSL=/usr/sbin/openssl
+fi
 
 WAITTIMER=0
 while [ -f "/var/run/gencert.pid" -a $WAITTIMER -lt 14 ]
@@ -18,20 +18,13 @@ do
 done
 touch /var/run/gencert.pid
 
-if [ "$SERVICE" == "ftp" ]
-then
-	cd /jffs/ssl/
-	KEYNAME="ftp.key"
-	CERTNAME="ftp.crt"
-else
-	cd /etc
-	KEYNAME="key.pem"
-	CERTNAME="cert.pem"
-fi
+cd /etc
+KEYNAME="key.pem"
+CERTNAME="cert.pem"
 
 OPENSSLCNF="/etc/openssl.config.$PID"
 
-cp -L /etc/openssl.cnf $OPENSSLCNF
+cp -L /etc/ssl/openssl.cnf $OPENSSLCNF
 
 LANCN=$(nvram get https_crt_cn)
 LANIP=$(nvram get lan_ipaddr)
@@ -44,6 +37,8 @@ then
 		echo "$I.commonName_value=$CN" >> $OPENSSLCNF
 		echo "$I.organizationName=O" >> $OPENSSLCNF
 		echo "$I.organizationName_value=$(uname -o)" >> $OPENSSLCNF
+		echo "$I.emailAddress=E" >> $OPENSSLCNF
+		echo "$I.emailAddress_value=root@localhost" >> $OPENSSLCNF
 		I=$(($I + 1))
 	done
 else
@@ -51,6 +46,8 @@ else
 	echo "0.commonName_value=$LANIP" >> $OPENSSLCNF
 	echo "0.organizationName=O" >> $OPENSSLCNF
 	echo "0.organizationName_value=$(uname -o)" >> $OPENSSLCNF
+	echo "0.emailAddress=E" >> $OPENSSLCNF
+	echo "0.emailAddress_value=root@localhost" >> $OPENSSLCNF
 fi
 
 I=0
@@ -128,18 +125,13 @@ fi
 
 
 # create the key
-openssl genrsa -out $KEYNAME.$PID 2048 -config $OPENSSLCNF
+$OPENSSL genpkey -out $KEYNAME.$PID -algorithm rsa -pkeyopt rsa_keygen_bits:2048
 # create certificate request and sign it
-openssl req -new -x509 -key $KEYNAME.$PID -sha256 -out $CERTNAME.$PID -days 3653 -config $OPENSSLCNF
+$OPENSSL req -new -x509 -key $KEYNAME.$PID -sha256 -out $CERTNAME.$PID -days 3653 -config $OPENSSLCNF -set_serial $1
 
+# server.pem for WebDav SSL
+cat $KEYNAME.$PID $CERTNAME.$PID > server.pem
 
-#	openssl x509 -in /etc/$CERTNAME.$PID -text -noout
-
-if [ "$SERVICE" == "web" ]
-then
-	# server.pem for WebDav SSL
-	cat $KEYNAME.$PID $CERTNAME.$PID > server.pem
-fi
 mv $KEYNAME.$PID $KEYNAME
 mv $CERTNAME.$PID $CERTNAME
 

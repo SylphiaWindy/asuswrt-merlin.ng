@@ -5,7 +5,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1999 - 2017, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) 1999 - 2018, Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -152,6 +152,9 @@ SSL_CFLAGS   = /DUSE_OPENSSL /I"$(SSL_INC_DIR)"
 !IF EXISTS("$(SSL_INC_DIR)\is_boringssl.h")
 SSL_CFLAGS   = $(SSL_CFLAGS) /DHAVE_BORINGSSL
 !ENDIF
+!IF "$(ENABLE_OPENSSL_AUTO_LOAD_CONFIG)"=="false"
+SSL_CFLAGS   = $(SSL_CFLAGS) /DCURL_DISABLE_OPENSSL_AUTO_LOAD_CONFIG
+!ENDIF
 !ENDIF
 
 
@@ -236,6 +239,7 @@ ZLIB_LIB_DIR = $(DEVEL_LIB)
 !IF "$(WITH_ZLIB)"=="dll"
 !IF EXISTS("$(ZLIB_LIB_DIR)\zlibwapi.lib")
 ZLIB_LIBS = zlibwapi.lib
+ADDITIONAL_ZLIB_CFLAGS = /DZLIB_WINAPI
 !ELSEIF EXISTS("$(ZLIB_LIB_DIR)\zdll.lib")
 ZLIB_LIBS   = zdll.lib
 !ELSE
@@ -246,6 +250,7 @@ ZLIB        = dll
 !ELSEIF "$(WITH_ZLIB)"=="static"
 !IF EXISTS("$(ZLIB_LIB_DIR)\zlibstat.lib")
 ZLIB_LIBS   = zlibstat.lib
+ADDITIONAL_ZLIB_CFLAGS = /DZLIB_WINAPI
 !ELSEIF EXISTS("$(ZLIB_LIB_DIR)\zlib.lib")
 ZLIB_LIBS   = zlib.lib
 !ELSE
@@ -256,7 +261,7 @@ ZLIB        = static
 !ENDIF
 
 !IFDEF USE_ZLIB
-ZLIB_CFLAGS = /DHAVE_ZLIB_H /DHAVE_ZLIB /DHAVE_LIBZ /I"$(ZLIB_INC_DIR)"
+ZLIB_CFLAGS = /DHAVE_ZLIB_H /DHAVE_ZLIB /DHAVE_LIBZ $(ADDITIONAL_ZLIB_CFLAGS) /I"$(ZLIB_INC_DIR)"
 !ENDIF
 
 
@@ -352,6 +357,8 @@ GEN_PDB = true
 
 !IFDEF EMBED_MANIFEST
 MANIFESTTOOL = $(MT) -manifest $(DIRDIST)\bin\$(PROGRAM_NAME).manifest -outputresource:$(DIRDIST)\bin\$(PROGRAM_NAME);1
+!ELSE
+CURL_RC_FLAGS = $(CURL_RC_FLAGS) /dCURL_EMBED_MANIFEST
 !ENDIF
 
 # Runtime library configuration
@@ -472,9 +479,20 @@ CFLAGS = $(CFLAGS) $(CFLAGS_PDB) /Fd"$(LIB_DIROBJ)\$(PDB)"
 LFLAGS = $(LFLAGS) $(LFLAGS_PDB)
 !ENDIF
 
+!IF ( "$(USE_SSL)"=="true" && "$(USE_WINSSL)"=="true" ) \
+ || ( "$(USE_SSL)"=="true" && "$(USE_MBEDTLS)"=="true" ) \
+ || ( "$(USE_MBEDTLS)"=="true" && "$(USE_WINSSL)"=="true" )
+CFLAGS = $(CFLAGS) /DCURL_WITH_MULTI_SSL
+!ENDIF
+
 LIB_DIROBJ = ..\builds\$(CONFIG_NAME_LIB)-obj-lib
 CURL_DIROBJ = ..\builds\$(CONFIG_NAME_LIB)-obj-curl
+
+!IFDEF WITH_PREFIX
+DIRDIST = $(WITH_PREFIX)
+!ELSE
 DIRDIST = ..\builds\$(CONFIG_NAME_LIB)\
+!ENDIF
 
 #
 # curl.exe
@@ -502,7 +520,7 @@ package: $(TARGET)
 	@-$(ZIP) -9 -q -r ..\$(CONFIG_NAME_LIB).zip .>nul 2<&1
 	@cd $(MAKEDIR)
 
-$(TARGET): $(LIB_OBJS) $(LIB_DIROBJ) $(DISTDIR)
+$(TARGET): $(LIB_OBJS) $(LIB_DIROBJ) $(DIRDIST)
 	@echo Using SSL: $(USE_SSL)
 	@echo Using NGHTTP2: $(USE_NGHTTP2)
 	@echo Using c-ares: $(USE_CARES)
@@ -621,4 +639,3 @@ clean:
 	@if exist $(LIB_DIROBJ) rd /s/q $(LIB_DIROBJ)
 	@if exist $(CURL_DIROBJ)rd /s/q $(CURL_DIROBJ)
 	@if exist $(DIRDIST) rd /s/q $(DIRDIST)
-

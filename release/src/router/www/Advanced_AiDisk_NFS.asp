@@ -82,9 +82,6 @@ function initial(){
 
 	shownfsd_exportlist();
 
-	if (hnd_support)
-		document.getElementById("nfsd_v2_tr").style.display="none";
-
 	document.aidiskForm.protocol.value = PROTOCOL;
 	initial_dir();
 	check_dir_path();
@@ -659,7 +656,7 @@ function check_dir_path(){
 										</tr>
 									</table>
 								</div>
-								<div style="margin:5px;"><img src="/images/New_ui/export/line_export.png"></div>
+								<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 								<div class="formfontdesc">Export directories from plugged USB disks over NFS.</div>
 
 								<table class="FormTable" width="100%" cellspacing="1">

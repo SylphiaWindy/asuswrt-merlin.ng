@@ -30,7 +30,6 @@ Supported Devices
 -----------------
 Devices supported on the new generation/current branch (382.xx and newer):
  * RT-AC66U_B1 (use the RT-AC68U firmware)
- * RT-AC56U
  * RT-AC68U, RT-AC68P, RT-AC68UF (including HW revision C1 and E1)
  * RT-AC1900 & RT-AC1900P (use the RT-AC68U firmware)
  * RT-AC87U
@@ -39,11 +38,14 @@ Devices supported on the new generation/current branch (382.xx and newer):
  * RT-AC3100
  * RT-AC5300
  * RT-AC86U
+ * RT-AC2900 (use the RT-AC86U firmware)
+ * RT-AX88U
 
 No longer supported:
  * RT-N16
  * RT-N66U
  * RT-AC66U
+ * RT-AC56U
 
 NOTE: all the "R" versions (for example RT-N66R) are the same as their 
 "U" counterparts, they are just different packages aimed at large 
@@ -58,7 +60,9 @@ Support for the RT-N66U and RT-AC66U has been dropped.
 Features
 --------
 Here is a list of features that Asuswrt-merlin adds over the original 
-firmware:
+firmware.
+
+(Note: HND platform = RT-AC86U and RT-AX88U):
 
 System:
    - Various bugfixes and optimizations
@@ -69,9 +73,11 @@ System:
    - Ability to customize the config files used by the router services
    - Ability to turn off router LEDs
    - Entware easy setup script (alternative to Optware - the two are 
-     mutually exclusive) (unavailable on RT-AC86U)
-   - SNMP support (except for the RT-AC86U)
+     mutually exclusive)
+   - SNMP support (except for HND devices)
    - Nano text editor (for more user-friendly script editing)
+   - NTP daemon, which can synchronize your client devices
+   - TLS 1.3 support for some services (OpenSSL 1.1.1)
 
 
 Disk sharing:
@@ -94,15 +100,20 @@ Networking:
    - Netfilter ipset module, for efficient blacklist implementation
    - Configurable min/max UPNP ports
    - DNS-based Filtering, can be applied globally or per client
-   - Custom DDNS (through a user script)
+   - Custom DDNS (through user script or custom config file)
    - TOR support, individual client control (based on experimental code
      from Asus)
    - Policy routing for the OpenVPN client (based on source or
      destination IPs), sometimes referred to as "selective routing")
    - DNSSEC support
-   - fq_codel queue discipline for QoS (ARM-based models only)
-   - Full cone NAT support (RT-AC86U only)
-   - Detailed wireless troubleshooting information (RT-AC86U only)
+   - fq_codel queue discipline for QoS
+   - Full cone NAT support (HND devices only)
+   - Detailed wireless troubleshooting information (HND devices
+     only)
+   - Modern DDNS client (In-a-Dyn), with HTTPS support
+   - DNS-over-TLS support
+   - Redirect NTP client queries to the router's own NTP daemon
+   - WS-Discovery support (alternative to SMBv1 network discovery)
 
 
 Web interface:
@@ -110,15 +121,16 @@ Web interface:
    - Optionally save traffic stats to disk (USB or JFFS partition)
    - Enhanced traffic monitoring with graphical reports of
      historical data
-   - Traffic report per IP (except on RT-AC86U)
+   - Traffic report per IP (except on HND devices)
    - Hostname field on the DHCP reservation page
    - System information summary page
-   - Wifi icon reports the state of both radios
+   - Wifi icon reports the state of all radios
    - Wireless site survey
    - Advanced Wireless client list display, including automated refresh
    - Redesigned layout of the various System Log sections
    - Editable fields for some pages
    - User-provided SSL certificate
+   - Advanced traffic classification report
 
 
 Some features that first appeared in Asuswrt-Merlin have since been 
@@ -197,12 +209,12 @@ https://github.com/RMerl/asuswrt-merlin.ng
 Contact information
 -------------------
 SmallNetBuilder forums (preferred method: http://www.snbforums.com/forums/asuswrt-merlin.42/ as RMerlin)
-Website: https://asuswrt.lostrealm.ca/
+Website: https://www.asuswrt-merlin.net/
 Github: https://github.com/RMerl
-Email: rmerl@lostrealm.ca
+Email: merlin@asuswrt-merlin.net
 Twitter: https://twitter.com/RMerlinDev
 IRC: #asuswrt on Freenode
-Download: https://asuswrt.lostrealm.ca/download
+Download: https://www.asuswrt-merlin.net/download
 
 Development news will be posted on Twitter and the support forums.  
 You can also keep a closer eye on development as it happens, through 

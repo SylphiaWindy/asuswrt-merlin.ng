@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2017, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 1998 - 2019, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -31,6 +31,10 @@
 
 #ifdef __VMS
 #  include <fabdef.h>
+#endif
+
+#ifdef __AMIGA__
+#  include <proto/dos.h>
 #endif
 
 #include "strcase.h"
@@ -97,7 +101,6 @@ CURLcode curl_easy_perform_ev(CURL *easy);
 static bool is_fatal_error(CURLcode code)
 {
   switch(code) {
-  /* TODO: Should CURLE_SSL_CACERT be included as critical error ? */
   case CURLE_FAILED_INIT:
   case CURLE_OUT_OF_MEMORY:
   case CURLE_UNKNOWN_OPTION:
@@ -111,6 +114,19 @@ static bool is_fatal_error(CURLcode code)
 
   /* no error or not critical */
   return FALSE;
+}
+
+/*
+ * Check if a given string is a PKCS#11 URI
+ */
+static bool is_pkcs11_uri(const char *string)
+{
+  if(curl_strnequal(string, "pkcs11:", 7)) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
 }
 
 #ifdef __VMS
@@ -245,9 +261,9 @@ static CURLcode operate_do(struct GlobalConfig *global,
      * no environment-specified filename is found then check for CA bundle
      * default filename curl-ca-bundle.crt in the user's PATH.
      *
-     * If Schannel (WinSSL) is the selected SSL backend then these locations
-     * are ignored. We allow setting CA location for schannel only when
-     * explicitly specified by the user via CURLOPT_CAINFO / --cacert.
+     * If Schannel is the selected SSL backend then these locations are
+     * ignored. We allow setting CA location for schannel only when explicitly
+     * specified by the user via CURLOPT_CAINFO / --cacert.
      */
     if(tls_backend_info->backend != CURLSSLBACKEND_SCHANNEL) {
       char *env;
@@ -810,6 +826,7 @@ static CURLcode operate_do(struct GlobalConfig *global,
         /* where to store */
         my_setopt(curl, CURLOPT_WRITEDATA, &outs);
         my_setopt(curl, CURLOPT_INTERLEAVEDATA, &outs);
+
         if(metalink || !config->use_metalink)
           /* what call to write */
           my_setopt(curl, CURLOPT_WRITEFUNCTION, tool_write_cb);
@@ -851,23 +868,13 @@ static CURLcode operate_do(struct GlobalConfig *global,
           my_setopt(curl, CURLOPT_INFILESIZE_LARGE, uploadfilesize);
         my_setopt_str(curl, CURLOPT_URL, this_url);     /* what to fetch */
         my_setopt(curl, CURLOPT_NOPROGRESS, global->noprogress?1L:0L);
-        if(config->no_body) {
+        if(config->no_body)
           my_setopt(curl, CURLOPT_NOBODY, 1L);
-          my_setopt(curl, CURLOPT_HEADER, 1L);
-        }
-        /* If --metalink is used, we ignore --include (headers in
-           output) option because mixing headers to the body will
-           confuse XML parser and/or hash check will fail. */
-        else if(!config->use_metalink)
-          my_setopt(curl, CURLOPT_HEADER, config->include_headers?1L:0L);
 
         if(config->oauth_bearer)
           my_setopt_str(curl, CURLOPT_XOAUTH2_BEARER, config->oauth_bearer);
 
-#if !defined(CURL_DISABLE_PROXY)
         {
-          /* TODO: Make this a run-time check instead of compile-time one. */
-
           my_setopt_str(curl, CURLOPT_PROXY, config->proxy);
           /* new in libcurl 7.5 */
           if(config->proxy)
@@ -905,7 +912,6 @@ static CURLcode operate_do(struct GlobalConfig *global,
           my_setopt(curl, CURLOPT_SUPPRESS_CONNECT_HEADERS,
                     config->suppress_connect_headers?1L:0L);
         }
-#endif /* !CURL_DISABLE_PROXY */
 
         my_setopt(curl, CURLOPT_FAILONERROR, config->failonerror?1L:0L);
         my_setopt(curl, CURLOPT_REQUEST_TARGET, config->request_target);
@@ -939,6 +945,9 @@ static CURLcode operate_do(struct GlobalConfig *global,
                     config->postfieldsize);
           break;
         case HTTPREQ_MIMEPOST:
+          result = tool2curlmime(curl, config->mimeroot, &config->mimepost);
+          if(result)
+            goto show_error;
           my_setopt_mimepost(curl, CURLOPT_MIMEPOST, config->mimepost);
           break;
         default:
@@ -999,6 +1008,9 @@ static CURLcode operate_do(struct GlobalConfig *global,
           /* new in libcurl 7.21.6 */
           if(config->tr_encoding)
             my_setopt(curl, CURLOPT_TRANSFER_ENCODING, 1L);
+          /* new in libcurl 7.64.0 */
+          my_setopt(curl, CURLOPT_HTTP09_ALLOWED,
+                    config->http09_allowed ? 1L : 0L);
 
         } /* (built_in_protos & CURLPROTO_HTTP) */
 
@@ -1054,7 +1066,8 @@ static CURLcode operate_do(struct GlobalConfig *global,
         }
         /* For the time being if --proxy-capath is not set then we use the
            --capath value for it, if any. See #1257 */
-        if(config->proxy_capath || config->capath) {
+        if((config->proxy_capath || config->capath) &&
+           !tool_setopt_skip(CURLOPT_PROXY_CAPATH)) {
           result = res_setopt_str(curl, CURLOPT_PROXY_CAPATH,
                                   (config->proxy_capath ?
                                    config->proxy_capath :
@@ -1080,6 +1093,46 @@ static CURLcode operate_do(struct GlobalConfig *global,
           my_setopt_str(curl, CURLOPT_PINNEDPUBLICKEY, config->pinnedpubkey);
 
         if(curlinfo->features & CURL_VERSION_SSL) {
+          /* Check if config->cert is a PKCS#11 URI and set the
+           * config->cert_type if necessary */
+          if(config->cert) {
+            if(!config->cert_type) {
+              if(is_pkcs11_uri(config->cert)) {
+                config->cert_type = strdup("ENG");
+              }
+            }
+          }
+
+          /* Check if config->key is a PKCS#11 URI and set the
+           * config->key_type if necessary */
+          if(config->key) {
+            if(!config->key_type) {
+              if(is_pkcs11_uri(config->key)) {
+                config->key_type = strdup("ENG");
+              }
+            }
+          }
+
+          /* Check if config->proxy_cert is a PKCS#11 URI and set the
+           * config->proxy_type if necessary */
+          if(config->proxy_cert) {
+            if(!config->proxy_cert_type) {
+              if(is_pkcs11_uri(config->proxy_cert)) {
+                config->proxy_cert_type = strdup("ENG");
+              }
+            }
+          }
+
+          /* Check if config->proxy_key is a PKCS#11 URI and set the
+           * config->proxy_key_type if necessary */
+          if(config->proxy_key) {
+            if(!config->proxy_key_type) {
+              if(is_pkcs11_uri(config->proxy_key)) {
+                config->proxy_key_type = strdup("ENG");
+              }
+            }
+          }
+
           my_setopt_str(curl, CURLOPT_SSLCERT, config->cert);
           my_setopt_str(curl, CURLOPT_PROXY_SSLCERT, config->proxy_cert);
           my_setopt_str(curl, CURLOPT_SSLCERTTYPE, config->cert_type);
@@ -1155,7 +1208,6 @@ static CURLcode operate_do(struct GlobalConfig *global,
         my_setopt_slist(curl, CURLOPT_POSTQUOTE, config->postquote);
         my_setopt_slist(curl, CURLOPT_PREQUOTE, config->prequote);
 
-#if !defined(CURL_DISABLE_HTTP) && !defined(CURL_DISABLE_COOKIES)
         if(config->cookie)
           my_setopt_str(curl, CURLOPT_COOKIE, config->cookie);
 
@@ -1168,13 +1220,6 @@ static CURLcode operate_do(struct GlobalConfig *global,
 
         /* new in libcurl 7.9.7 */
         my_setopt(curl, CURLOPT_COOKIESESSION, config->cookiesession?1L:0L);
-#else
-        if(config->cookie || config->cookiefile || config->cookiejar) {
-          warnf(config->global, "cookie option(s) used even though cookie "
-                "support is disabled!\n");
-          return CURLE_NOT_BUILT_IN;
-        }
-#endif
 
         my_setopt_enum(curl, CURLOPT_TIMECONDITION, (long)config->timecond);
         my_setopt(curl, CURLOPT_TIMEVALUE_LARGE, config->condtime);
@@ -1216,12 +1261,22 @@ static CURLcode operate_do(struct GlobalConfig *global,
         my_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
                   (long)(config->connecttimeout * 1000));
 
+        if(config->doh_url)
+          my_setopt_str(curl, CURLOPT_DOH_URL, config->doh_url);
+
         if(config->cipher_list)
           my_setopt_str(curl, CURLOPT_SSL_CIPHER_LIST, config->cipher_list);
 
         if(config->proxy_cipher_list)
           my_setopt_str(curl, CURLOPT_PROXY_SSL_CIPHER_LIST,
                         config->proxy_cipher_list);
+
+        if(config->cipher13_list)
+          my_setopt_str(curl, CURLOPT_TLS13_CIPHERS, config->cipher13_list);
+
+        if(config->proxy_cipher13_list)
+          my_setopt_str(curl, CURLOPT_PROXY_TLS13_CIPHERS,
+                        config->proxy_cipher13_list);
 
         /* new in libcurl 7.9.2: */
         if(config->disable_epsv)
@@ -1304,7 +1359,6 @@ static CURLcode operate_do(struct GlobalConfig *global,
 
         /* curl 7.13.0 */
         my_setopt_str(curl, CURLOPT_FTP_ACCOUNT, config->ftp_account);
-
         my_setopt(curl, CURLOPT_IGNORE_CONTENT_LENGTH, config->ignorecl?1L:0L);
 
         /* curl 7.14.2 */
@@ -1315,9 +1369,8 @@ static CURLcode operate_do(struct GlobalConfig *global,
 
         /* curl 7.15.2 */
         if(config->localport) {
-          my_setopt(curl, CURLOPT_LOCALPORT, (long)config->localport);
-          my_setopt_str(curl, CURLOPT_LOCALPORTRANGE,
-                        (long)config->localportrange);
+          my_setopt(curl, CURLOPT_LOCALPORT, config->localport);
+          my_setopt_str(curl, CURLOPT_LOCALPORTRANGE, config->localportrange);
         }
 
         /* curl 7.15.5 */
@@ -1373,6 +1426,8 @@ static CURLcode operate_do(struct GlobalConfig *global,
 
         hdrcbdata.outs = &outs;
         hdrcbdata.heads = &heads;
+        hdrcbdata.global = global;
+        hdrcbdata.config = config;
 
         my_setopt(curl, CURLOPT_HEADERFUNCTION, tool_header_cb);
         my_setopt(curl, CURLOPT_HEADERDATA, &hdrcbdata);
@@ -1471,6 +1526,15 @@ static CURLcode operate_do(struct GlobalConfig *global,
         /* new in 7.60.0 */
         if(config->haproxy_protocol)
           my_setopt(curl, CURLOPT_HAPROXYPROTOCOL, 1L);
+
+        if(config->disallow_username_in_url)
+          my_setopt(curl, CURLOPT_DISALLOW_USERNAME_IN_URL, 1L);
+
+#ifdef USE_ALTSVC
+        /* only if explicitly enabled in configure */
+        if(config->altsvc)
+          my_setopt_str(curl, CURLOPT_ALTSVC, config->altsvc);
+#endif
 
         /* initialize retry vars for loop below */
         retry_sleep_default = (config->retry_delay) ?
@@ -1573,6 +1637,7 @@ static CURLcode operate_do(struct GlobalConfig *global,
                 curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response);
 
                 switch(response) {
+                case 408: /* Request Timeout */
                 case 500: /* Internal Server Error */
                 case 502: /* Bad Gateway */
                 case 503: /* Service Unavailable */
@@ -1583,10 +1648,6 @@ static CURLcode operate_do(struct GlobalConfig *global,
                    * file (or terminal). If we write to a file, we must rewind
                    * or close/re-open the file so that the next attempt starts
                    * over from the beginning.
-                   *
-                   * TODO: similar action for the upload case. We might need
-                   * to start over reading from a previous point if we have
-                   * uploaded something when this was returned.
                    */
                   break;
                 }
@@ -1677,8 +1738,6 @@ static CURLcode operate_do(struct GlobalConfig *global,
                download was not successful. */
             long response;
             if(CURLE_OK == result) {
-              /* TODO We want to try next resource when download was
-                 not successful. How to know that? */
               char *effective_url = NULL;
               curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url);
               if(effective_url &&
@@ -1744,7 +1803,7 @@ static CURLcode operate_do(struct GlobalConfig *global,
         else if(result && global->showerror) {
           fprintf(global->errors, "curl: (%d) %s\n", result, (errorbuffer[0]) ?
                   errorbuffer : curl_easy_strerror(result));
-          if(result == CURLE_SSL_CACERT)
+          if(result == CURLE_PEER_FAILED_VERIFICATION)
             fputs(CURL_CA_CERT_ERRORMSG, global->errors);
         }
 
@@ -1793,9 +1852,9 @@ static CURLcode operate_do(struct GlobalConfig *global,
 #ifdef __AMIGA__
         if(!result && outs.s_isreg && outs.filename) {
           /* Set the url (up to 80 chars) as comment for the file */
-          if(strlen(url) > 78)
-            url[79] = '\0';
-          SetComment(outs.filename, url);
+          if(strlen(urlnode->url) > 78)
+            urlnode->url[79] = '\0';
+          SetComment(outs.filename, urlnode->url);
         }
 #endif
 
@@ -1852,9 +1911,6 @@ static CURLcode operate_do(struct GlobalConfig *global,
             break;
           mlres = mlres->next;
           if(mlres == NULL)
-            /* TODO If metalink_next_res is 1 and mlres is NULL,
-             * set res to error code
-             */
             break;
         }
         else if(urlnum > 1) {

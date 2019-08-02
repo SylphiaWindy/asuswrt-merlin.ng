@@ -11,7 +11,6 @@
 <title><#Web_Title#> - OpenVPN Client Settings</title>
 <link rel="stylesheet" type="text/css" href="index_style.css">
 <link rel="stylesheet" type="text/css" href="form_style.css">
-
 <script language="JavaScript" type="text/javascript" src="/state.js"></script>
 <script language="JavaScript" type="text/javascript" src="/general.js"></script>
 <script language="JavaScript" type="text/javascript" src="/popup.js"></script>
@@ -43,7 +42,7 @@
 	font-size:14px;
 	z-index:200;
 	position:relative;
-	background-color:balck:
+	background-color:black;
 }
 .QISform_wireless{
 	width:600px;
@@ -158,39 +157,22 @@ switch (openvpn_unit) {
 
 enforce_ori = "<% nvram_get("vpn_client_enforce"); %>";
 policy_ori = "<% nvram_get("vpn_client_rgw"); %>";
+dnsmode_ori = "<% nvram_get("vpn_client_adns"); %>";
 
 ciphersarray = [
 		["AES-128-CBC"],
-		["AES-128-CFB"],
-		["AES-128-OFB"],
 		["AES-192-CBC"],
-		["AES-192-CFB"],
-		["AES-192-OFB"],
 		["AES-256-CBC"],
-		["AES-256-CFB"],
-		["AES-256-OFB"],
 		["AES-128-GCM"],
 		["AES-192-GCM"],
 		["AES-256-GCM"],
 		["BF-CBC"],
-		["BF-CFB"],
-		["BF-OFB"],
 		["CAST5-CBC"],
-		["CAST5-CFB"],
-		["CAST5-OFB"],
 		["DES-CBC"],
-		["DES-CFB"],
 		["DES-EDE3-CBC"],
-		["DES-EDE3-CFB"],
-		["DES-EDE3-OFB"],
 		["DES-EDE-CBC"],
-		["DES-EDE-CFB"],
-		["DES-EDE-OFB"],
-		["DES-OFB"],
 		["DESX-CBC"],
-		["IDEA-CBC"],
-		["IDEA-CFB"],
-		["IDEA-OFB"]
+		["IDEA-CBC"]
 ];
 
 var digestsarray = [
@@ -244,7 +226,7 @@ function initial()
 	}
 
 	showclientlist();
-	showLANIPList();
+	showDropdownClientList('setClientIP', 'name>ip', 'all', 'ClientList_Block_PC', 'pull_arrow', 'online');
 
 	// Client list
 	free_options(document.form.vpn_client_unit);
@@ -293,13 +275,13 @@ function initial()
 	update_visibility();
 
 
-	var custom2 = document.form.vpn_client_custom2.value;
+	var cust2 = document.form.vpn_client_cust2.value;
 	if (isSupport("hnd")) {
 		document.getElementById("vpn_client_custom_x").maxLength = 170 * 3;     // 255 * 3 - base64 overhead
-		custom2 += document.form.vpn_client_custom21.value +
-		           document.form.vpn_client_custom22.value;
+		cust2 += document.form.vpn_client_cust21.value +
+		           document.form.vpn_client_cust22.value;
 	}
-	document.getElementById("vpn_client_custom_x").value = Base64.decode(custom2);
+	document.getElementById("vpn_client_custom_x").value = Base64.decode(cust2);
 
 	setTimeout("getConnStatus()", 1000);
 
@@ -389,6 +371,7 @@ function update_visibility(){
 
 	showhide("client_bridge_warn_text", (bridge == 0));
 	showhide("client_nat", ((iface == "tun") || (bridge == 0)));
+
 	showhide("client_nat_warn_text", (((nat == 0) || (auth == "secret" && iface == "tun"))));
 
 	showhide("client_local_1", (iface == "tun" && auth == "secret"));
@@ -423,7 +406,7 @@ function update_rgw_options(){
 
 	free_options(document.form.vpn_client_rgw);
 	add_option(document.form.vpn_client_rgw, "No","0",(currentpolicy == 0));
-	add_option(document.form.vpn_client_rgw, "All","1",(currentpolicy == 1));
+	add_option(document.form.vpn_client_rgw, "Yes","1",(currentpolicy == 1));
 	if (iface == "tun") {
 		add_option(document.form.vpn_client_rgw, "Policy Rules","2",(currentpolicy == 2));
 		add_option(document.form.vpn_client_rgw, "Policy Rules (strict)","3",(currentpolicy == 3));
@@ -613,13 +596,16 @@ function applyRule(manual_switch){
 		split_custom2(Base64.encode(document.getElementById("vpn_client_custom_x").value));
 	} else {
 		document.form.vpn_client_clientlist.value = tmp_value;
-		document.form.vpn_client_custom2.value = Base64.encode(document.getElementById("vpn_client_custom_x").value);
+		document.form.vpn_client_cust2.value = Base64.encode(document.getElementById("vpn_client_custom_x").value);
 	}
 
 	if (((enforce_ori != getRadioValue(document.form.vpn_client_enforce)) ||
 	     (policy_ori != document.form.vpn_client_rgw.value)) &&
 	    (client_state == 0) && (manual_switch == 0))
 		document.form.action_script.value += "start_vpnrouting"+openvpn_unit;
+
+	if ((dnsmode_ori != document.form.vpn_client_adns.value) && (client_state != 0))
+		document.form.action_script.value += ";restart_dnsmasq"
 
 	document.form.submit();
 }
@@ -635,12 +621,12 @@ function split_clientlist(clientlist){
 	document.form.vpn_client_clientlist5.value = clientlist.substring(counter, (counter+=255));
 }
 
-function split_custom2(custom2){
+function split_custom2(cust2){
 	var counter = 0;
-	document.form.vpn_client_custom2.value = custom2.substring(counter, (counter+=255));
+	document.form.vpn_client_cust2.value = cust2.substring(counter, (counter+=255));
 
-	document.form.vpn_client_custom21.value = custom2.substring(counter, (counter+=255));
-	document.form.vpn_client_custom22.value = custom2.substring(counter, (counter+=255));
+	document.form.vpn_client_cust21.value = cust2.substring(counter, (counter+=255));
+	document.form.vpn_client_cust22.value = cust2.substring(counter, (counter+=255));
 }
 
 function change_vpn_unit(val){
@@ -840,61 +826,36 @@ function del_Row(r){
 		showclientlist();
 }
 
-function showLANIPList(){
-	if(clientList.length == 0){
-		setTimeout(function() {
-			genClientList();
-			showLANIPList();
-		}, 500);
-		return false;
-	}
+function hideClients_Block(evt){
+	if(typeof(evt) != "undefined"){
+		if(!evt.srcElement)
+			evt.srcElement = evt.target; // for Firefox
 
-	var htmlCode = "";
-	for(var i=0; i<clientList.length;i++){
-		var clientObj = clientList[clientList[i]];
-
-		if(clientObj.ip != "offline"){
-			if(clientObj.name.length > 20) clientObj.name = clientObj.name.substring(0, 16) + "..";
-
-			htmlCode += '<a><div onmouseover="over_var=1;" onmouseout="over_var=0;" onclick="setClientIP(\'';
-			htmlCode += clientObj.name;
-			htmlCode += '\', \'';
-			htmlCode += clientObj.ip;
-			htmlCode += '\');"><strong>';
-			htmlCode += clientObj.name;
-			htmlCode += '</strong> ('+clientObj.ip+')</div></a><!--[if lte IE 6.5]><iframe class="hackiframe2"></iframe><![endif]-->';
+		if(evt.srcElement.id == "pull_arrow" || evt.srcElement.id == "ClientList_Block"){
+			return;
 		}
 	}
 
-	document.getElementById("ClientList_Block_PC").innerHTML = htmlCode;
-}
-
-function setClientIP(_name, _ipaddr){
-	document.form.clientlist_deviceName.value = _name;
-	document.form.clientlist_ipAddr.value = _ipaddr;
-	hideClients_Block();
-	over_var = 0;
-}
-
-var over_var = 0;
-var isMenuopen = 0;
-function hideClients_Block(){
 	document.getElementById("pull_arrow").src = "/images/arrow-down.gif";
 	document.getElementById('ClientList_Block_PC').style.display='none';
-	isMenuopen = 0;
 }
 
 function pullLANIPList(obj){
+	var element = document.getElementById('ClientList_Block_PC');
+	var isMenuopen = element.offsetWidth > 0 || element.offsetHeight > 0;
 	if(isMenuopen == 0){
 		obj.src = "/images/arrow-top.gif"
-		document.getElementById("ClientList_Block_PC").style.display = 'block';
-		document.form.clientlist_deviceName.focus();
-		isMenuopen = 1;
+		element.style.display = 'block';
 	}
 	else
 		hideClients_Block();
 }
 
+function setClientIP(name, ipaddr){
+	document.form.clientlist_ipAddr.value = ipaddr;
+	document.form.clientlist_deviceName.value = name;
+	hideClients_Block();
+}
 
 function getConnStatus() {
 	$.ajax({
@@ -1010,7 +971,7 @@ function refreshVPNIP() {
 					<p><#vpn_openvpn_KC_Edit1#> <span style="color:#FFCC00;">----- BEGIN xxx ----- </span>/<span style="color:#FFCC00;"> ----- END xxx -----</span> <#vpn_openvpn_KC_Edit2#>
 					<p>Limit: 7999 characters per field
 				</div>
-				<div style="margin:5px;*margin-left:-5px;"><img style="width: 730px; height: 2px;" src="/images/New_ui/export/line_export.png"></div>
+				<div style="margin:5px;*margin-left:-5px;width: 730px; height: 2px;" class="splitLine"></div>
 			</tr>			
 			<!--===================================Beginning of tls Content===========================================-->
 
@@ -1131,9 +1092,9 @@ function refreshVPNIP() {
 <input type="hidden" name="vpn_client_clientlist3" value="<% nvram_clean_get("vpn_client_clientlist3"); %>">
 <input type="hidden" name="vpn_client_clientlist4" value="<% nvram_clean_get("vpn_client_clientlist4"); %>">
 <input type="hidden" name="vpn_client_clientlist5" value="<% nvram_clean_get("vpn_client_clientlist5"); %>">
-<input type="hidden" name="vpn_client_custom2" value="<% nvram_get("vpn_client_custom2"); %>">
-<input type="hidden" name="vpn_client_custom21" value="<% nvram_get("vpn_client_custom21"); %>">
-<input type="hidden" name="vpn_client_custom22" value="<% nvram_get("vpn_client_custom22"); %>">
+<input type="hidden" name="vpn_client_cust2" value="<% nvram_get("vpn_client_cust2"); %>">
+<input type="hidden" name="vpn_client_cust21" value="<% nvram_get("vpn_client_cust21"); %>">
+<input type="hidden" name="vpn_client_cust22" value="<% nvram_get("vpn_client_cust22"); %>">
 
 <table class="content" align="center" cellpadding="0" cellspacing="0">
   <tr>
@@ -1156,7 +1117,7 @@ function refreshVPNIP() {
                 <div>&nbsp;</div>
                 <div class="formfonttitle">OpenVPN Client Settings</div>
 		<div id="divSwitchMenu" style="margin-top:-40px;float:right;"></div>
-                <div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+		<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 		<div class="formfontdesc">
                         <p>Before starting the service make sure you properly configure it, including
                            the required keys,<br>otherwise you will be unable to turn it on.
@@ -1219,7 +1180,7 @@ function refreshVPNIP() {
 						</td>
 					</tr>
 					<tr>
-							<th><#vpn_openvpnc_importovpn#></th>
+						<th><#vpn_openvpnc_importovpn#></th>
 						<td>
 							<input id="ovpnfile" type="file" name="file" class="input" style="color:#FFCC00;*color:#000;">
 							<input id="" class="button_gen" onclick="ImportOvpn();" type="button" value="<#CTL_upload#>" />
@@ -1283,6 +1244,13 @@ function refreshVPNIP() {
 							<input type="radio" name="vpn_client_nat" class="input" value="1" onclick="update_visibility();" <% nvram_match_x("", "vpn_client_nat", "1", "checked"); %>><#checkbox_Yes#>
 							<input type="radio" name="vpn_client_nat" class="input" value="0" onclick="update_visibility();" <% nvram_match_x("", "vpn_client_nat", "0", "checked"); %>><#checkbox_No#>
 							<span id="client_nat_warn_text">Routes must be configured manually.</span>
+						</td>
+					</tr>
+					<tr>
+						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,30);">Inbound Firewall</a></th>
+						<td>
+							<input type="radio" name="vpn_client_fw" class="input" value="1" <% nvram_match_x("", "vpn_client_fw", "1", "checked"); %>>Block
+							<input type="radio" name="vpn_client_fw" class="input" value="0" <% nvram_match_x("", "vpn_client_fw", "0", "checked"); %>>Allow
 						</td>
 					</tr>
 					<tr id="client_local_1">
@@ -1425,6 +1393,7 @@ function refreshVPNIP() {
 								<option value="yes" <% nvram_match("vpn_client_comp","yes","selected"); %> >LZO</option>
 								<option value="adaptive" <% nvram_match("vpn_client_comp","adaptive","selected"); %> > LZO Adaptive</option>
 								<option value="lz4" <% nvram_match("vpn_client_comp","lz4","selected"); %> >LZ4</option>
+								<option value="lz4-v2" <% nvram_match("vpn_client_comp","lz4-v2","selected"); %> >LZ4-V2</option>
 							</select>
 						</td>
 					</tr>
@@ -1445,11 +1414,11 @@ function refreshVPNIP() {
 						<td>
 							<input type="radio" name="vpn_client_tlsremote" class="input" onclick="update_visibility();" value="1" <% nvram_match_x("", "vpn_client_tlsremote", "1", "checked"); %>><#checkbox_Yes#>
 							<input type="radio" name="vpn_client_tlsremote" class="input" onclick="update_visibility();" value="0" <% nvram_match_x("", "vpn_client_tlsremote", "0", "checked"); %>><#checkbox_No#>
-							<label style="padding-left:3em;" id="client_cn_label">Common name:</label><input type="text" maxlength="64" class="input_25_table" id="vpn_client_cn" name="vpn_client_cn" value="<% nvram_get("vpn_client_cn"); %>">
+							<label style="padding-left:3em;" id="client_cn_label">Common name:</label><input type="text" maxlength="255" class="input_25_table" id="vpn_client_cn" name="vpn_client_cn" value="<% nvram_get("vpn_client_cn"); %>">
 						</td>
 					</tr>
 					<tr>
-						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,19);">Redirect Internet traffic</a></th>
+						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,19);">Force Internet traffic through tunnel</a></th>
 						<td colspan="2">
 							<select name="vpn_client_rgw" class="input_option" onChange="update_visibility();">
 							</select>
@@ -1483,12 +1452,12 @@ function refreshVPNIP() {
 							<input type="text" class="input_15_table" maxlength="15" name="clientlist_deviceName" onClick="hideClients_Block();" onKeyPress="return validator.isString(this, event);">
 						</td>
 						<td width="29%">
-							<input type="text" class="input_18_table" maxlength="18" name="clientlist_ipAddr">
-							<img id="pull_arrow" height="14px;" src="/images/arrow-down.gif" style="position:absolute;*margin-left:-3px;*margin-top:1px;" onclick="pullLANIPList(this);" title="<#select_device_name#>" onmouseover="over_var=1;" onmouseout="over_var=0;">
-							<div id="ClientList_Block_PC" class="ClientList_Block_PC"></div>
+							<input type="text" class="input_18_table" maxlength="18" name="clientlist_ipAddr" onKeyPress="return validator.isIPAddrPlusNetmask(this, event)" onClick="hideClients_Block();" autocomplete="off" autocorrect="off" autocapitalize="off">
+							<img id="pull_arrow" height="14px;" src="/images/arrow-down.gif" style="position:absolute;*margin-left:-3px;*margin-top:1px;" onclick="pullLANIPList(this);" title="<#select_device_name#>">
+							<div id="ClientList_Block_PC" class="clientlist_dropdown"></div>
 						</td>
 						<td width="25%">
-							<input type="text" class="input_18_table" maxlength="18" name="clientlist_dstipAddr">
+							<input type="text" class="input_18_table" maxlength="18" name="clientlist_dstipAddr" onKeyPress="return validator.isIPAddrPlusNetmask(this, event)" autocomplete="off" autocorrect="off" autocapitalize="off">
 						</td>
 						<td width="10%">
 							<select name="clientlist_iface" class="input_option">

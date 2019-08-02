@@ -141,7 +141,7 @@ ej_wl_sta_status(int eid, webs_t wp, char *name)
 #include <bcmparams.h>		/* for DEV_NUMIFS */
 
 /* The below macros handle endian mis-matches between wl utility and wl driver. */
-#if !defined(htod16) || !defined(htod32) || !defined(dtoh32) || !defined(dtoh16) || !defined(dtohchanspec)
+#if defined(RTCONFIG_BCM_7114) || defined(RTCONFIG_BCM7) || !defined(RTCONFIG_BCMWL6)
 static bool g_swap = FALSE;
 #ifndef htod16
 #define htod16(i) (g_swap?bcmswap16(i):(uint16)(i))
@@ -1567,12 +1567,12 @@ ej_wl_status(int eid, webs_t wp, int argc, char_t **argv, int unit)
 	} else {
 		const char *dfs_cacstate_str[WL_DFS_CACSTATES] = {
 			"IDLE",
-			"PRE-ISM Channel Availability Check(CAC)",
-			"In-Service Monitoring(ISM)",
-			"Channel Switching Announcement(CSA)",
+			"PRE-ISM Channel Availability Check (CAC)",
+			"In-Service Monitoring (ISM)",
+			"Channel Switching Announcement (CSA)",
 			"POST-ISM Channel Availability Check",
-			"PRE-ISM Ouf Of Channels(OOC)",
-			"POST-ISM Out Of Channels(OOC)"
+			"PRE-ISM Ouf Of Channels (OOC)",
+			"POST-ISM Out Of Channels (OOC)"
 		};
 
 		ret += websWrite(wp, "\nDFS status: state %s time elapsed %dms radar channel cleared by DFS ",
@@ -2657,8 +2657,10 @@ int wl_wps_info(int eid, webs_t wp, int argc, char_t **argv, int unit)
 #ifdef RTCONFIG_QTN
 	int ret;
 	qcsapi_SSID ssid;
+#if 0
 	string_64 key_passphrase;
-//	char wps_pin[16];
+	char wps_pin[16];
+#endif
 #endif
 
 
@@ -4611,7 +4613,6 @@ get_scan_escan(char *scan_buf, uint buf_len)
 
 exit:
 	close(fd);
-	d_info->event_fd = -1;
 
 	/* free scan results */
 	result = escan_bss_head;
@@ -4625,13 +4626,14 @@ exit:
 }
 
 static char *
-wl_get_scan_results_escan(char *ifname)
+wl_get_scan_results_escan(char *ifname, chanspec_t chanspec)
 {
 	int ret, retry_times = 0;
 	wl_escan_params_t *params = NULL;
 	int params_size = WL_SCAN_PARAMS_FIXED_SIZE + OFFSETOF(wl_escan_params_t, params) + NUMCHANS * sizeof(uint16);
 	int org_scan_time = 20, scan_time = 40;
 	int wlscan_debug = 0;
+	char chanbuf[CHANSPEC_STR_LEN];
 
 	if (nvram_match("wlscan_debug", "1"))
 		wlscan_debug = 1;
@@ -4685,6 +4687,16 @@ wl_get_scan_results_escan(char *ifname)
 		}
 	}
 
+	if (chanspec != 0) {
+		dbg("restore original chanspec: %s (0x%x)\n", wf_chspec_ntoa(chanspec, chanbuf), chanspec);
+#ifndef RTCONFIG_BCM7
+		wl_iovar_setint(ifname, "dfs_ap_move", chanspec);
+#else
+		wl_iovar_setint(ifname, "chanspec", chanspec);
+		wl_reset_ssid(ifname);
+#endif
+	}
+
 	if (ret < 0)
 		return NULL;
 
@@ -4693,13 +4705,14 @@ wl_get_scan_results_escan(char *ifname)
 #endif
 
 static char *
-wl_get_scan_results(char *ifname)
+wl_get_scan_results(char *ifname, chanspec_t chanspec)
 {
 	int ret, retry_times = 0;
 	wl_scan_params_t *params;
 	wl_scan_results_t *list = (wl_scan_results_t*)scan_result;
 	int params_size = WL_SCAN_PARAMS_FIXED_SIZE + NUMCHANS * sizeof(uint16);
 	int org_scan_time = 20, scan_time = 40;
+	char chanbuf[CHANSPEC_STR_LEN];
 
 	params = (wl_scan_params_t*)malloc(params_size);
 	if (params == NULL) {
@@ -4741,6 +4754,16 @@ wl_get_scan_results(char *ifname)
 			printf("get scan result failed\n");
 	}
 
+	if (chanspec != 0) {
+		dbg("restore original chanspec: %s (0x%x)\n", wf_chspec_ntoa(chanspec, chanbuf), chanspec);
+#ifndef RTCONFIG_BCM7
+		wl_iovar_setint(ifname, "dfs_ap_move", chanspec);
+#else
+		wl_iovar_setint(ifname, "chanspec", chanspec);
+		wl_reset_ssid(ifname);
+#endif
+	}
+
 	if (ret < 0)
 		return NULL;
 
@@ -4757,7 +4780,6 @@ ej_nat_accel_status(int eid, webs_t wp, int argc, char_t **argv)
 	return retval;
 }
 
-//static wlc_ap_list_info_t *
 static int
 wl_scan(int eid, webs_t wp, int argc, char_t **argv, int unit)
 {
@@ -4770,26 +4792,76 @@ wl_scan(int eid, webs_t wp, int argc, char_t **argv, int unit)
 	char ssid_str[128];
 	char macstr[18];
 	int retval = 0, ctl_ch;
+	char chanbuf[CHANSPEC_STR_LEN];
+	chanspec_t chspec_cur = 0, chanspec;
+#if defined(RTCONFIG_DHDAP) && !defined(RTCONFIG_BCM7)
+	chanspec_t chspec_tar = 0;
+	char buf_sm[WLC_IOCTL_SMLEN];
+	wl_dfs_ap_move_status_t *status = (wl_dfs_ap_move_status_t*) buf_sm;
+#endif
 
 	snprintf(prefix, sizeof(prefix), "wl%d_", unit);
 	name = nvram_safe_get(strcat_r(prefix, "ifname", tmp));
 
 	ctl_ch = wl_control_channel(unit);
-	if (!nvram_match(strcat_r(prefix, "reg_mode", tmp), "off")
-		&& ((ctl_ch > 48) && (ctl_ch < 149))) {
-		dbg("scan rejected under DFS mode\n");
-		return 0;
-	}
+	if (!nvram_match(strcat_r(prefix, "reg_mode", tmp), "off")) {
+		if ((ctl_ch > 48) && (ctl_ch < 149)) {
+			if (!with_non_dfs_chspec(name)) {
+				dbg("%s scan rejected under DFS mode\n", name);
+				return 0;
+			} else if (wl_iovar_getint(name, "chanspec", (int *) &chspec_cur) < 0) {
+				dbg("get current chanpsec failed\n");
+				return 0;
+			} else {
+				dbg("current chanspec: %s (0x%x)\n", wf_chspec_ntoa(chspec_cur, chanbuf), chspec_cur);
+
+				chanspec = (unit == 1 ? select_chspec_with_band_bw(name, 1, 0, chspec_cur) : select_chspec_with_band_bw(name, 4, 0, chspec_cur));
+				dbg("switch to chanspec: %s (0x%x)\n", wf_chspec_ntoa(chanspec, chanbuf), chanspec);
+				wl_iovar_setint(name, "chanspec", chanspec);
+				wl_reset_ssid(name);
+			}
+		}
+#if defined(RTCONFIG_DHDAP) && !defined(RTCONFIG_BCM7)
+		else {
+			if (wl_iovar_get(name, "dfs_ap_move", &buf_sm[0], WLC_IOCTL_SMLEN) < 0) {
+				dbg("get dfs_ap_move status failure\n");
+				return 0;
+			}
+
+			if (status->version != WL_DFS_AP_MOVE_VERSION)
+				return 0;
+
+			if (status->move_status != (int8) DFS_SCAN_S_IDLE) {
+				chspec_tar = status->chanspec;
+				if (chspec_tar != 0 && chspec_tar != INVCHANSPEC) {
+					wf_chspec_ntoa(chspec_tar, chanbuf);
+					dbg("AP Target Chanspec %s (0x%x)\n", chanbuf, chspec_tar);
+				}
+
+				if (status->move_status == (int8) DFS_SCAN_S_INPROGESS)
+					wl_iovar_setint(name, "dfs_ap_move", -2);
+			}
+		}
+#endif
+
+#if defined(RTCONFIG_DHDAP) && !defined(RTCONFIG_BCM7)
+		if ((ctl_ch <= 48) || (ctl_ch >= 149))
+			chanspec = chspec_tar;
+		else
+#endif
+			chanspec = chspec_cur;
+	} else
+		chanspec = 0;
 
 #if defined(RTCONFIG_BCM7) || defined(RTCONFIG_BCM_7114) || defined(HND_ROUTER)
 	if (!nvram_match(strcat_r(prefix, "mode", tmp), "wds")) {
-		if (wl_get_scan_results_escan(name) == NULL) {
+		if (wl_get_scan_results_escan(name, chanspec) == NULL) {
 			return 0;
 		}
 	}
 	else
 #endif
-	if (wl_get_scan_results(name) == NULL) {
+	if (wl_get_scan_results(name, chanspec) == NULL) {
 		return 0;
 	}
 
@@ -5164,6 +5236,7 @@ ej_wl_status_array(int eid, webs_t wp, int argc, char_t **argv, int unit)
 	char *arplist = NULL, *arplistptr;
 	char *leaselist = NULL, *leaselistptr;
 	char *ipv6list = NULL, *ipv6listptr;
+	char *line;
 	char hostnameentry[65];
 	char ipentry[42], macentry[18];
 	int found, foundipv6 = 0, noclients = 0;
@@ -5172,31 +5245,28 @@ ej_wl_status_array(int eid, webs_t wp, int argc, char_t **argv, int unit)
 	scb_val_t scb_val;
 	int hr, min, sec;
 	sta_info_t *sta;
-
-	snprintf(prefix, sizeof(prefix), "wl%d_", unit);
+#ifdef RTCONFIG_BCMWL6
+	wl_dfs_status_t *dfs_status;
+	char chanspec_str[CHANSPEC_STR_LEN];
+#endif
+#ifdef RTCONFIG_QTN
+	int res;
+#endif
 
 #ifdef RTCONFIG_PROXYSTA
 	if (psta_exist_except(unit))
-	{
-		if (unit == 1)
-			ret += websWrite(wp, "dataarray5 = [];wificlients5 = [];");
-		else if (unit == 2)
-			ret += websWrite(wp, "dataarray52 = [];wificlients52 = [];");
-		else
-			ret += websWrite(wp, "dataarray24 = [];wificlients24 = [];");
 		return ret;
-	}
 #endif
 
+	snprintf(prefix, sizeof(prefix), "wl%d_", unit);
 	name = nvram_safe_get(strcat_r(prefix, "ifname", tmp));
+
 #ifdef RTCONFIG_QTN
 	if (unit && rpc_qtn_ready())
 	{
-		ret = qcsapi_wifi_rfstatus((qcsapi_unsigned_int *) &val);
-		if (ret < 0) {
-			ret += websWrite(wp, "dataarray5 = [];wificlients5 = [];");
-			dbG("qcsapi_wifi_rfstatus error, return: %d\n", ret);
-		}
+		res = qcsapi_wifi_rfstatus((qcsapi_unsigned_int *) &val);
+		if (res < 0)
+			dbG("qcsapi_wifi_rfstatus error, return: %d\n", res);
 		else
 			val = !val;
 	}
@@ -5208,29 +5278,23 @@ ej_wl_status_array(int eid, webs_t wp, int argc, char_t **argv, int unit)
 	}
 #ifdef RTCONFIG_QTN
 	if (unit && !rpc_qtn_ready())
-	{
-		ret += websWrite(wp, "dataarray5 = [];wificlients5 = [];");
 		return ret;
-	}
 	else
 #endif
 	if (val)
-	{
-		if (unit == 1)
-			ret += websWrite(wp, "dataarray5 = [];wificlients5 = [];");
-		else if (unit == 2)
-			ret += websWrite(wp, "dataarray52 = [];wificlients52 = [];");
-		else
-			ret += websWrite(wp, "dataarray24 = [];wificlients24 = [];");
 		return ret;
-	}
 
-	if (unit == 1)
-		ret += websWrite(wp, "dataarray5 = [");
-	else if (unit == 2)
-		ret += websWrite(wp, "dataarray52 = [");
-	else
+        switch (unit) {
+        case 0:
 		ret += websWrite(wp, "dataarray24 = [");
+                break;
+        case 1:
+		ret += websWrite(wp, "dataarray5 = [");
+		break;
+        case 2:
+		ret += websWrite(wp, "dataarray52 = [");
+                break;
+        }
 
 	if (nvram_match(strcat_r(prefix, "mode", tmp), "wds")) {
 		ret += websWrite(wp, "\"\",\"\",\"\",\"\",\"%d\",\"\",", wl_control_channel(unit));
@@ -5283,22 +5347,58 @@ ej_wl_status_array(int eid, webs_t wp, int argc, char_t **argv, int unit)
 // Close dataarray
 	ret += websWrite(wp, "];\n");
 
-	if (noclients) {
-		if (unit == 1)
-			ret += websWrite(wp, "wificlients5 = [];");
-		else if (unit == 2)
-			ret += websWrite(wp, "wificlients52 = [];");
-		else
-			ret += websWrite(wp, "wificlients24 = [];");
+// DFS status
+#ifdef RTCONFIG_BCMWL6
+	if (unit != 1)
+		goto sta_list;
+
+	if (nvram_match(strcat_r(prefix, "reg_mode", tmp), "off"))
+		goto sta_list;
+
+	memset(buf, 0, sizeof(buf));
+	strcpy(buf, "dfs_status");
+
+	if (wl_ioctl(name, WLC_GET_VAR, buf, sizeof(buf)) < 0)
+		goto sta_list;
+
+	dfs_status = (wl_dfs_status_t *) buf;
+	dfs_status->state = dtoh32(dfs_status->state);
+	dfs_status->duration = dtoh32(dfs_status->duration);
+	dfs_status->chanspec_cleared = wl_chspec_from_driver(dfs_status->chanspec_cleared);
+
+	const char *dfs_cacstate_str[WL_DFS_CACSTATES] = {
+		"Idle",
+		"PRE-ISM Channel Availability Check (CAC)",
+		"In-Service Monitoring (ISM)",
+		"Channel Switching Announcement (CSA)",
+		"POST-ISM Channel Availability Check",
+		"PRE-ISM Ouf Of Channels (OOC)",
+		"POST-ISM Out Of Channels (OOC)"
+	};
+
+	ret += websWrite(wp, "var dfs_statusarray = [\"%s\", \"%d s\", \"%s\"];\n",
+		(dfs_status->state >= WL_DFS_CACSTATES ? "Unknown" : dfs_cacstate_str[dfs_status->state]),
+		dfs_status->duration/1000,
+		(dfs_status->chanspec_cleared ? wf_chspec_ntoa(dfs_status->chanspec_cleared, chanspec_str) : "None"));
+#endif
+
+	if (noclients)
 		return ret;
-	}
+
+sta_list:
+
 // Open client array
-	if (unit == 1)
-		ret += websWrite(wp, "wificlients5 = [");
-	else if (unit == 2)
-		ret += websWrite(wp, "wificlients52 = [");
-	else
+	switch(unit) {
+	case 0:
 		ret += websWrite(wp, "wificlients24 = [");
+		break;
+	case 1:
+		ret += websWrite(wp, "wificlients5 = [");
+		break;
+	case 2:
+		ret += websWrite(wp, "wificlients52 = [");
+		break;
+	}
 
 #ifdef RTCONFIG_QTN
 	if (unit && rpc_qtn_ready())
@@ -5358,51 +5458,54 @@ ej_wl_status_array(int eid, webs_t wp, int argc, char_t **argv, int unit)
 
 		found = 0;
 		if (arplist) {
-			arplistptr = arplist;
-
-			while ((arplistptr < arplist+strlen(arplist)-2) && (sscanf(arplistptr,"%15s %*s %*s %17s",ipentry,macentry) == 2)) {
-				if (upper_strcmp(macentry, ether_etoa((void *)&auth->ea[i], ea)) == 0) {
+			arplistptr = strdup(arplist);
+			line = strtok(arplistptr, "\n");
+			while (line) {
+				if ( (sscanf(line,"%15s %*s %*s %17s",ipentry,macentry) == 2) &&
+				     (!strcasecmp(macentry, ether_etoa((void *)&auth->ea[i], ea))) ) {
 					found = 1;
 					break;
-				} else {
-					arplistptr = strstr(arplistptr,"\n")+1;
-				}
+				} else
+					line  = strtok(NULL, "\n");
 			}
+			if (arplistptr)	free(arplistptr);
 
-			if (found || !leaselist) {
+			if (found || !leaselist)
 				ret += websWrite(wp, "\"%s\",", (found ? ipentry : "<unknown>"));
-			}
 		} else {
 			ret += websWrite(wp, "\"<unknown>\",");
 		}
 
 		// Retrieve hostname from dnsmasq leases
 		if (leaselist) {
-			leaselistptr = leaselist;
-
-			while ((leaselistptr < leaselist+strlen(leaselist)-2) && (sscanf(leaselistptr,"%*s %17s %15s %32s %*s", macentry, ipentry, tmp) == 3)) {
-				if (upper_strcmp(macentry, ether_etoa((void *)&auth->ea[i], ea)) == 0) {
+			leaselistptr = strdup(leaselist);
+			line = strtok(leaselistptr, "\n");
+			while (line) {
+				if ( (sscanf(line,"%*s %17s %15s %32s %*s", macentry, ipentry, tmp) == 3) &&
+				     (!strcasecmp(macentry, ether_etoa((void *)&auth->ea[i], ea))) ) {
 					found += 2;
 					break;
-				} else {
-					leaselistptr = strstr(leaselistptr,"\n")+1;
-				}
+				} else
+					line = strtok(NULL, "\n");
 			}
+			if (leaselistptr) free(leaselistptr);
+
 			if ((found) && (str_escape_quotes(hostnameentry, tmp, sizeof(hostnameentry)) == 0 ))
 				strlcpy(hostnameentry, tmp, sizeof(hostnameentry));
 
-			if (found == 0) {
-				// Not in arplist nor in leaselist
-				ret += websWrite(wp, "\"<not found>\",\"<not found>\",");
-			} else if (found == 1) {
-				// Only in arplist (static IP)
-				ret += websWrite(wp, "\"<not found>\",");
-			} else if (found == 2) {
-				// Only in leaselist (dynamic IP that has not communicated with router for a while)
+			switch (found) {
+			case 0:	// Not in arplist nor in leaselist
+				ret += websWrite(wp, "\"<unknown>\",\"<unknown>\",");
+				break;
+			case 1:	// Only in arplist (static IP)
+				ret += websWrite(wp, "\"<unknown>\",");
+				break;
+			case 2:	// Only in leaselist (dynamic IP that has not communicated with router for a while)
 				ret += websWrite(wp, "\"%s\", \"%s\",", ipentry, hostnameentry);
-			} else if (found == 3) {
-				// In both arplist and leaselist (dynamic IP)
+				break;
+			case 3:	// In both arplist and leaselist (dynamic IP)
 				ret += websWrite(wp, "\"%s\",", hostnameentry);
+				break;
 			}
 		} else {
 			ret += websWrite(wp, "\"<unknown>\",");
@@ -5502,52 +5605,54 @@ ej_wl_status_array(int eid, webs_t wp, int argc, char_t **argv, int unit)
 
 				found = 0;
 				if (arplist) {
-					arplistptr = arplist;
-
-					while ((arplistptr < arplist+strlen(arplist)-2) && (sscanf(arplistptr,"%15s %*s %*s %17s",ipentry,macentry) == 2)) {
-						if (upper_strcmp(macentry, ether_etoa((void *)&auth->ea[ii], ea)) == 0) {
+					arplistptr = strdup(arplist);
+					line = strtok(arplistptr, "\n");
+					while (line) {
+						if ( (sscanf(line,"%15s %*s %*s %17s",ipentry,macentry) == 2) &&
+						     (!strcasecmp(macentry, ether_etoa((void *)&auth->ea[ii], ea))) ) {
 							found = 1;
 							break;
-						} else {
-							arplistptr = strstr(arplistptr,"\n")+1;
-						}
+						} else
+							line  = strtok(NULL, "\n");
 					}
+					if (arplistptr) free(arplistptr);
 
-					if (found || !leaselist) {
-						ret += websWrite(wp, "\"%s\",", (found ? ipentry : ""));
-					}
+					if (found || !leaselist)
+						ret += websWrite(wp, "\"%s\",", (found ? ipentry : "<unknown>"));
 				} else {
 					ret += websWrite(wp, "\"<unknown>\",");
 				}
 
 				// Retrieve hostname from dnsmasq leases
 				if (leaselist) {
-					leaselistptr = leaselist;
-
-					while ((leaselistptr < leaselist+strlen(leaselist)-2) && (sscanf(leaselistptr,"%*s %17s %15s %32s %*s", macentry, ipentry, tmp) == 3)) {
-						if (upper_strcmp(macentry, ether_etoa((void *)&auth->ea[ii], ea)) == 0) {
+					leaselistptr = strdup(leaselist);
+					line = strtok(leaselistptr, "\n");
+					while (line) {
+						if ( (sscanf(line,"%*s %17s %15s %32s %*s", macentry, ipentry, tmp) == 3) &&
+						     (!strcasecmp(macentry, ether_etoa((void *)&auth->ea[ii], ea))) ) {
 							found += 2;
 							break;
-						} else {
-							leaselistptr = strstr(leaselistptr,"\n")+1;
-						}
+						} else
+							line = strtok(NULL, "\n");
 					}
+					if (leaselistptr) free(leaselistptr);
 
 					if ((found) && (str_escape_quotes(hostnameentry, tmp,sizeof(hostnameentry)) == 0 ))
 						strlcpy(hostnameentry, tmp, sizeof(hostnameentry));
 
-					if (found == 0) {
-						// Not in arplist nor in leaselist
+					switch (found) {
+					case 0:	// Not in arplist nor in leaselist
 						ret += websWrite(wp, "\"<not found>\",\"<not found>\",");
-					} else if (found == 1) {
-						// Only in arplist (static IP)
+						break;
+					case 1:	// Only in arplist (static IP)
 						ret += websWrite(wp, "\"<not found>\",");
-					} else if (found == 2) {
-						// Only in leaselist (dynamic IP that has not communicated with router for a while)
+						break;
+					case 2:	// Only in leaselist (dynamic IP that has not communicated with router for a while)
 						ret += websWrite(wp, "\"%s\",\"%s\",", ipentry, hostnameentry);
-					} else if (found == 3) {
-						// In both arplist and leaselist (dynamic IP)
+						break;
+					case 3:	// In both arplist and leaselist (dynamic IP)
 						ret += websWrite(wp, "\"%s\",", hostnameentry);
+						break;
 					}
 				} else {
 					ret += websWrite(wp, "\"<unknown>\",");
@@ -5609,7 +5714,7 @@ ej_wl_status_array(int eid, webs_t wp, int argc, char_t **argv, int unit)
 						((sta->ht_capabilities & WL_STA_CAP_TX_STBC) || (sta->ht_capabilities & WL_STA_CAP_RX_STBC_MASK)) ? "T" : "_");
 #ifdef RTCONFIG_MUMIMO
 					ret += websWrite(wp, "%s",
-						((sta->vht_flags & WL_STA_MU_BEAMFORMER) || (sta->vht_flags & WL_STA_MU_BEAMFORMEE)) ? "M" : " ");
+						((sta->vht_flags & WL_STA_MU_BEAMFORMER) || (sta->vht_flags & WL_STA_MU_BEAMFORMEE)) ? "M" : "_");
 #endif
 #else
 					ret += websWrite(wp, "\"%s",
@@ -5624,9 +5729,9 @@ ej_wl_status_array(int eid, webs_t wp, int argc, char_t **argv, int unit)
 			}
 		}
 	}
-	ret += websWrite(wp, "\"-1\"];");
 	/* error/exit */
 exit:
+	ret += websWrite(wp, "\"-1\"];");
 	if (auth) free(auth);
 	if (arplist) free(arplist);
 	if (leaselist) free(leaselist);

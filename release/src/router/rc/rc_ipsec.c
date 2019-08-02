@@ -534,12 +534,12 @@ void rc_strongswan_conf_set()
                 "  user = %s\n"
                 "  threads = %d\n"
                 "  send_vendor_id = yes\n"
-                "  duplicheck.enable = no\n"
                 "  starter { load_warning = no }\n\n"
                 "  load_modular = yes\n\n"
                 "  i_dont_care_about_security_and_use_aggressive_mode_psk = yes\n\n"
                 "  plugins {\n    include strongswan.d/charon/*.conf\n  }\n"
-                "  filelog {\n      /var/log/strongswan.charon.log {\n"
+                "  filelog {\n      charon {\n"
+		"        path = /var/log/strongswan.charon.log\n"
                 "        time_format = %%b %%e %%T\n        default = %d\n"
                 "        append = no\n        flush_line = yes\n"
                 "     }\n  }\n",
@@ -562,6 +562,7 @@ void rc_strongswan_conf_set()
     fprintf(fp, "\n}#the end of the Charon {\n\n");
     if(NULL != fp){
         fclose(fp);
+        run_postconf("strongswan","/etc/strongswan.conf");
     }
 /*DBG(("[%d]strongswan.conf:\n dns1:%s\n dns2:%s\n wins1=%s\n wins2=%s\n",
       rc, samba_prof.dns1, samba_prof.dns2, samba_prof.nbios1, samba_prof.nbios2));*/
@@ -1346,7 +1347,7 @@ void rc_ipsec_topology_set()
 
     memset(p_tmp, 0, sizeof(char) * SZ_MIN);
     fp = fopen("/tmp/etc/ipsec.conf", "w");
-    fprintf(fp,"conn %%default\n  keyexchange=ikev1\n  authby=secret\n\n");
+    fprintf(fp,"conn %%default\n  keyexchange=ikev1\n  authby=secret\n  ike=aes256-sha1-modp1024\n");
 
 	for(prof_count = PROF_CLI; prof_count < PROF_ALL; prof_count++){
 	    for(i = 0; i < MAX_PROF_NUM; i++){
@@ -1420,10 +1421,11 @@ void rc_ipsec_topology_set()
 	}
     if(NULL != fp){
         fclose(fp);
+        run_postconf("ipsec","/etc/ipsec.conf");
     }
     return;
 }
-void rc_ipsec_nvram_convert_check()
+void rc_ipsec_nvram_convert_check(void)
 {
 	int i, prof_count = 0;
 	char buf[SZ_MIN], buf_ext[SZ_MIN];
@@ -1450,7 +1452,7 @@ void rc_ipsec_nvram_convert_check()
 		}
 	}
 }
-void rc_ipsec_config_init()
+void rc_ipsec_config_init(void)
 {
     memset((ipsec_samba_t *)&samba_prof, 0, sizeof(ipsec_samba_t));
     memset((ipsec_prof_t *)&prof[0][0], 0, sizeof(ipsec_prof_t) * MAX_PROF_NUM);
@@ -1475,7 +1477,7 @@ void rc_ipsec_config_init()
     //rc_ipsec_ca_import();
     return;
 }
-void rc_set_ipsec_stack_block_size()
+void rc_set_ipsec_stack_block_size(void)
 {
 	char command[64];
 	if(NULL != nvram_safe_get("ipsec_stack_block_size")){
@@ -1510,7 +1512,7 @@ void get_bitmap_scan(int *cur_bitmap_en)
 	}
 	return;
 }
-void run_ipsec_firewall_scripts()
+void run_ipsec_firewall_scripts(void)
 {
 	char *argv[3];
 	argv[0] = "/bin/sh";

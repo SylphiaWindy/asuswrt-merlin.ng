@@ -222,7 +222,7 @@ config RTCONFIG_IPSEC_CLIENT
 	bool "IPsec Support"
 	depends on RTCONFIG_IPSEC
 	default n
-	
+
 # !!TB
 config RTCONFIG_IPV6
 	bool "IPv6 Support"
@@ -353,6 +353,10 @@ config RTCONFIG_YANDEXDNS
 	depends on !RTCONFIG_DNSFILTER
 	default n
 
+config RTCONFIG_DNSPRIVACY
+	bool "DNS-over-TLS Support"
+	default n
+
 config RTCONFIG_DSL
 	bool "DSL Support"
 	default n
@@ -421,7 +425,7 @@ config RTCONFIG_MEDIA_SERVER
 	bool "Media Server (MiniDLNA)"
 	depends on RTCONFIG_USB
 	default n
-	
+
 config RTCONFIG_MEDIASERVER_LIMIT
 	bool "Small memory optimization on Media Server"
 	depends on RTCONFIG_MEDIA_SERVER
@@ -1425,7 +1429,7 @@ config RTCONFIG_REBOOT_SCHEDULE
 config RTCONFIG_IPSEC
 	bool "IPSEC support"
 	default n
-	
+
 config RTCONFIG_CAPTIVE_PORTAL
 	bool "Captive Portal support"
 	default n
@@ -1563,6 +1567,10 @@ config RTCONFIG_DEFLAN50
 	bool "Let the default LAN subnet be 192.168.50.1"
 	default n
 
+config RTCONFIG_ALL_DEF_LAN50
+	bool "Let the default LAN subnet be 192.168.50.1 in all sku."
+	default n
+
 config RTCONFIG_VPN_FUSION
 	bool "Enable VPN Fusion"
 	default n
@@ -1625,6 +1633,20 @@ config RTCONFIG_DNSSEC
 	bool "dnsmasq: Enable DNSSEC support"
 	default n
 
+choice
+	prompt "dnsmasq: DNSSEC crypto library"
+	default RTCONFIG_DNSSEC_NETTLE
+
+config RTCONFIG_DNSSEC_OPENSSL
+	bool "OpenSSL"
+	depends on RTCONFIG_DNSSEC
+
+config RTCONFIG_DNSSEC_NETTLE
+	bool "Nettle"
+	depends on RTCONFIG_DNSSEC
+
+endchoice
+
 config RTCONFIG_MERLINUPDATE
 	bool "Check for new firmware version - Merlin-only"
 	default n
@@ -1632,6 +1654,10 @@ config RTCONFIG_MERLINUPDATE
 config RTCONFIG_DNSFILTER
 	bool "DNS-based filtering Support"
 	depends on !RTCONFIG_YANDEXDNS
+	default n
+
+config RTCONFIG_OPENSSL11
+	bool "OpenSSL 1.1.x"
 	default n
 
 config RTCONFIG_LETSENCRYPT
@@ -1727,11 +1753,11 @@ config RTCONFIG_AMAS
 config RTCONFIG_NO_SELECT_CHANNEL
 	bool "Auto Channel Selection (no select) for MTK."
 	default n
-	
+
 config RTCONFIG_USB_SWAP
 	bool "Enable SWAP, if enable USB function."
 	default n
-		
+
 config RTCONFIG_SW_DEVLED
 	bool "software led control."
 	default n
@@ -1778,4 +1804,12 @@ config RTCONFIG_LIBASUSLOG
 
 config RTCONFIG_WIREGURAD_TOOLS
 	bool "Tools for Wireguard - Fast and secure kernelspace VPN (rt-ac86u only)"
+	default n
+
+config RTCONFIG_ETHOBD
+	bool "ethernet onboarding for Aimash."
+	default n
+
+config RTCONFIG_NTPD
+	bool "ntp & ntpd support"
 	default n

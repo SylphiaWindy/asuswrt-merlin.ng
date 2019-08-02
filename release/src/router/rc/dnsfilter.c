@@ -15,7 +15,7 @@
  * MA 02111-1307 USA
  *
  *
- * Copyright 2014-2017 Eric Sauvageau.
+ * Copyright 2014-2019 Eric Sauvageau.
  *
  */
 
@@ -26,18 +26,36 @@
 #ifdef RTCONFIG_DNSFILTER
 
 int get_dns_filter(int proto, int mode, char **server);
+int dnsfilter_support_dot(int mode);
 
+// Return 1 if selected mode supports DNS over TLS
+int dnsfilter_support_dot(int mode)
+{
+	switch (mode){
+		case 8:
+		case 9:
+		case 10:	// Custom 1, 2 and 3 - assume they might support it
+		case 13:	// Quad9
+		case 11:	// Router (in case end-user implements it locally)
+		case 14:
+		case 15:
+		case 16:	// CleanBrowsing 1-3
+			return 1;
+		default:
+			return 0;
+	}
+}
 
 // ARG: server must be an array of two pointers, each pointing to an array of chars
 int get_dns_filter(int proto, int mode, char **server)
 {
 	int count = 0;
-	char *server_table[13][2] = {
+	char *server_table[][2] = {
 		{ "", "" },			/* 0: Unfiltered */
 		{ "208.67.222.222", "" },	/* 1: OpenDNS */
-		{ "199.85.126.10", "" },	/* 2: Norton Connect Safe A (Security) */
-		{ "199.85.126.20", "" },	/* 3: Norton Connect Safe B (Security + Adult) */
-		{ "199.85.126.30", "" },	/* 4: Norton Connect Safe C (Sec. + Adult + Violence */
+		{ "", "" },	/* 2: Discontinued Norton Connect Safe */
+		{ "", "" },	/* 3: Discontinued Norton Connect Safe */
+		{ "", "" },	/* 4: Discontinued Norton Connect Safe */
 		{ "77.88.8.88", "" },		/* 5: Secure Mode safe.dns.yandex.ru */
 		{ "77.88.8.7", "" },		/* 6: Family Mode family.dns.yandex.ru */
 		{ "208.67.222.123", "" },	/* 7: OpenDNS Family Shield */
@@ -45,23 +63,31 @@ int get_dns_filter(int proto, int mode, char **server)
 		{ nvram_safe_get("dnsfilter_custom2"), "" },		/* 9: Custom2 */
 		{ nvram_safe_get("dnsfilter_custom3"), "" },		/* 10: Custom3 */
 		{ nvram_safe_get("dhcp_dns1_x"), "" },			/* 11: Router */
-		{ "8.26.56.26", "" }		/* 12: Comodo Secure DNS */
+		{ "8.26.56.26", "" },		/* 12: Comodo Secure DNS */
+		{ "9.9.9.9", "" },		/* 13: Quad9 */
+		{ "185.228.168.9", "" },	/* 14: CleanBrowsing Security */
+		{ "185.228.168.10", "" },	/* 15: CleanBrowsing Adult */
+		{ "185.228.168.168", "" }	/* 16: CleanBrowsing Family */
         };
 #ifdef RTCONFIG_IPV6
 	char *server6_table[][2] = {
 		{"", ""},		/* 0: Unfiltered */
 		{"", ""},		/* 1: OpenDNS */
-		{"", ""},		/* 2: Norton Connect Safe A (Security) */
-		{"", ""},		/* 3: Norton Connect Safe B (Security + Adult) */
-		{"", ""},		/* 4: Norton Connect Safe C (Sec. + Adult + Violence */
+		{"", ""},		/* 2: Discontinued Norton Connect Safe */
+		{"", ""},		/* 3: Discontinued Norton Connect Safe */
+		{"", ""},		/* 4: Discontinued Norton Connect Safe */
 		{"2a02:6b8::feed:bad","2a02:6b8:0:1::feed:bad"},		/* 5: Secure Mode safe.dns.yandex.ru */
 		{"2a02:6b8::feed:a11","2a02:6b8:0:1::feed:a11"},		/* 6: Family Mode family.dns.yandex.ru */
 		{"", ""},		/* 7: OpenDNS Family Shield */
 		{"", ""},		/* 8: Custom1 - not supported yet */
 		{"", ""},		/* 9: Custom2 - not supported yet */
 		{"", ""},		/* 10: Custom3 - not supported yet */
-		{nvram_safe_get("dhcp_dns1_x"), ""},		/* 11: Router */
-		{"", ""}		/* 12: Comodo Secure DNS */
+		{"", ""},		/* 11: Router  - semi-supported, refer dnsfilter_setup_dnsmasq() */
+		{"", ""},		/* 12: Comodo Secure DNS */
+		{"2620:fe::fe", "2620:fe::9"},	/* 13: Quad9 */
+		{"2a0d:2a00:1::2", "2a0d:2a00:2::2"},	/* 14: CleanBrowsing Security */
+		{"2a0d:2a00:1::1", "2a0d:2a00:2::1"},	/* 15: CleanBrowsing Adult */
+		{"2a0d:2a00:1::", "2a0d:2a00:2::"}	/* 16: CleanBrowsing Family */
         };
 #endif
 
@@ -153,8 +179,9 @@ void dnsfilter6_settings(FILE *fp, char *lan_if, char *lan_ip) {
 	fprintf(fp, "-A INPUT -i %s -p udp -m udp --dport 53 -j DNSFILTERI\n"
 		    "-A INPUT -i %s -p tcp -m tcp --dport 53 -j DNSFILTERI\n"
 		    "-A FORWARD -i %s -p udp -m udp --dport 53 -j DNSFILTERF\n"
-		    "-A FORWARD -i %s -p tcp -m tcp --dport 53 -j DNSFILTERF\n",
-		lan_if, lan_if, lan_if, lan_if);
+		    "-A FORWARD -i %s -p tcp -m tcp --dport 53 -j DNSFILTERF\n"
+		    "-A FORWARD -i %s -p tcp -m tcp --dport 853 -j DNSFILTER_DOT\n",
+		lan_if, lan_if, lan_if, lan_if, lan_if);
 
 #ifdef HND_ROUTER
 	nv = nvp = malloc(255 * 6 + 1);
@@ -170,17 +197,26 @@ void dnsfilter6_settings(FILE *fp, char *lan_if, char *lan_ip) {
 			continue;
 		if (dnsmode == 0) {	// Unfiltered
 			fprintf(fp, "-A DNSFILTERI -m mac --mac-source %s -j ACCEPT\n"
-				    "-A DNSFILTERF -m mac --mac-source %s -j ACCEPT\n", 
-					mac, mac);
+				    "-A DNSFILTERF -m mac --mac-source %s -j ACCEPT\n"
+				    "-A DNSFILTER_DOT -m mac --mac-source %s -j ACCEPT\n",
+					mac, mac, mac);
 		} else {	// Filtered
 			count = get_dns_filter(AF_INET6, dnsmode, server);
-			fprintf(fp, "-A DNSFILTERI -m mac --mac-source %s -j DROP\n", mac);
 			if (count) {
 				fprintf(fp, "-A DNSFILTERF -m mac --mac-source %s -d %s -j ACCEPT\n", mac, server[0]);
+				if (dnsfilter_support_dot(dnsmode))
+					fprintf(fp, "-A DNSFILTER_DOT -m mac --mac-source %s -d %s -j ACCEPT\n", mac, server[0]);
 			}
 			if (count == 2) {
 				fprintf(fp, "-A DNSFILTERF -m mac --mac-source %s -d %s -j ACCEPT\n", mac, server[1]);
+				if (dnsfilter_support_dot(dnsmode))
+					fprintf(fp, "-A DNSFILTER_DOT -m mac --mac-source %s -d %s -j ACCEPT\n", mac, server[1]);
 			}
+			// Reject other servers for that client
+			fprintf(fp, "-A DNSFILTERI -m mac --mac-source %s -j DROP\n"
+			            "-A DNSFILTERF -m mac --mac-source %s -j DROP\n"
+			            "-A DNSFILTER_DOT -m mac --mac-source %s -j DROP\n",
+			            mac, mac, mac);
 		}
 	}
 	free(nv);
@@ -193,14 +229,19 @@ void dnsfilter6_settings(FILE *fp, char *lan_if, char *lan_ip) {
 			fprintf(fp, "-A DNSFILTERI -d %s -j ACCEPT\n"
 				    "-A DNSFILTERF -d %s -j ACCEPT\n",
 				server[0], server[0]);
+			if (dnsfilter_support_dot(dnsmode))
+				fprintf(fp, "-A DNSFILTER_DOT -d %s -j ACCEPT\n", server[0]);
 		}
 		if (count == 2) {
 			fprintf(fp, "-A DNSFILTERI -d %s -j ACCEPT\n"
 				    "-A DNSFILTERF -d %s -j ACCEPT\n",
 				server[1], server[1]);
+			if (dnsfilter_support_dot(dnsmode))
+				fprintf(fp, "-A DNSFILTER_DOT -d %s -j ACCEPT\n", server[1]);
 		}
 		fprintf(fp, "-A DNSFILTERI -j %s\n"
-			    "-A DNSFILTERF -j DROP\n",
+			    "-A DNSFILTERF -j DROP\n"
+		            "-A DNSFILTER_DOT -j DROP\n",
 		            (dnsmode == 11 ? "ACCEPT" : "DROP"));
 	}
 }
@@ -219,6 +260,11 @@ void dnsfilter_setup_dnsmasq(FILE *fp) {
 		if (dnsmode == defmode)
 			continue;
 		count = get_dns_filter(AF_INET6, dnsmode, server);
+		if (count == 0 && dnsmode == 11) {
+			/* Workaround dynamic router address */
+			server[0] = "::";
+			count = 1;
+		}
 		if (count == 0)
 			continue;
 		fprintf(fp, "dhcp-option=dnsf%u,option6:23,[%s]", dnsmode, server[0]);
@@ -245,4 +291,49 @@ void dnsfilter_setup_dnsmasq(FILE *fp) {
 	free(nv);
 }
 #endif	// RTCONFIG_IPV6
+
+
+// Add rules fo Filter chain to prevent the use of DOT if client is filtered, and server does not support DOT
+void dnsfilter_dot_rules(FILE *fp, char *lan_if)
+{
+	char *name, *mac, *mode;
+	unsigned char ea[ETHER_ADDR_LEN];
+	char *nv, *nvp, *rule, *server[2];
+	int dnsmode;
+
+	if (nvram_get_int("dnsfilter_enable_x") == 0) return;
+
+	fprintf(fp, "-A FORWARD -i %s -m tcp -p tcp --dport 853 -j DNSFILTER_DOT\n", lan_if);
+
+#ifdef HND_ROUTER
+	nv = nvp = malloc(255 * 6 + 1);
+	if (nv) nvram_split_get("dnsfilter_rulelist", nv, 255 * 6 + 1, 5);
+#else
+	nv = nvp = strdup(nvram_safe_get("dnsfilter_rulelist"));
+#endif
+	while (nv && (rule = strsep(&nvp, "<")) != NULL) {
+		if (vstrsep(rule, ">", &name, &mac, &mode) != 3)
+			continue;
+		if (!*mac || !*mode || !ether_atoe(mac, ea))
+			continue;
+		dnsmode = atoi(mode);
+		if (dnsmode == 0)	// Unfiltered
+			fprintf(fp, "-A DNSFILTER_DOT -m mac --mac-source %s -j RETURN\n", mac);
+		else if (dnsfilter_support_dot(dnsmode) && get_dns_filter(AF_INET, dnsmode, server) > 0 )	// Filter supports DOT
+			fprintf(fp, "-A DNSFILTER_DOT -m mac --mac-source %s ! -d %s -j REJECT\n", mac, server[0]);
+		else	// Reject DOT access
+			fprintf(fp, "-A DNSFILTER_DOT -m mac --mac-source %s -j REJECT\n", mac);
+	}
+	free(nv);
+
+	/* Global filtering */
+	dnsmode = nvram_get_int("dnsfilter_mode");
+	if (dnsmode) {
+		if (dnsfilter_support_dot(dnsmode) && get_dns_filter(AF_INET, dnsmode, server) > 0 )
+			fprintf(fp, "-A DNSFILTER_DOT ! -d %s -j REJECT\n", server[0]);
+		else
+			fprintf(fp, "-A DNSFILTER_DOT -j REJECT\n");
+	}
+}
+
 #endif	// RTCONFIG_DNSFILTER

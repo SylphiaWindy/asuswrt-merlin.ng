@@ -92,6 +92,8 @@ dstoffset = '<% nvram_get("time_zone_dstoff"); %>';
 var orig_shell_timeout_x = Math.floor(parseInt("<% nvram_get("shell_timeout"); %>")/60);
 var orig_enable_acc_restriction = '<% nvram_get("enable_acc_restriction"); %>';
 var orig_restrict_rulelist_array = [];
+if((ntpd_support) && (isSwMode('rt')))
+	var orig_ntpd_server_redir = '<% nvram_get("ntpd_server_redir"); %>';
 var restrict_rulelist_array = [];
 var accounts = [<% get_all_accounts(); %>][0];
 for(var i=0; i<accounts.length; i++){
@@ -184,6 +186,9 @@ function initial(){
 		hide_https_crt();
 		show_cert_details();
 	}
+	var lanport = '<% nvram_get("http_lanport"); %>';
+	if (lanport == '') lanport = '80';
+	change_url(lanport, 'http_lan')
 
 	if(wifi_tog_btn_support || wifi_hw_sw_support || sw_mode == 2 || sw_mode == 4){		// wifi_tog_btn && wifi_hw_sw && hide WPS button behavior under repeater mode
 			if(cfg_wps_btn_support){
@@ -309,6 +314,13 @@ function initial(){
 		if (document.form.usb_idle_exclude.value.indexOf("i") != -1)
 			document.form.usb_idle_exclude_i.checked = true;
 	}
+
+	if ( (ntpd_support) && (isSwMode('rt')) )
+		showhide("ntpd_redir_tr", '<% nvram_get("ntpd_enable"); %>');
+	else {
+		showhide("ntpd_server_tr", 0);
+		showhide("ntpd_redir_tr", 0);
+	}
 }
 
 var time_zone_tmp="";
@@ -375,7 +387,8 @@ function applyRule(){
 			return false;
 		}
 
-		if((document.form.enable_acc_restriction.value != orig_enable_acc_restriction) || (restrict_rulelist_array.toString() != orig_restrict_rulelist_array.toString()))
+//		if((document.form.enable_acc_restriction.value != orig_enable_acc_restriction) || (restrict_rulelist_array.toString() != orig_restrict_rulelist_array.toString())
+//			|| (document.form.ntpd_server_redir.value != orig_ntpd_server_redir) )
 			restart_firewall_flag = true;
 
 		if(document.form.http_passwd2.value.length > 0){
@@ -472,7 +485,9 @@ function applyRule(){
 			updateDateTime();
 		}
 
-		var action_script_tmp = "";
+		showLoading();
+
+		var action_script_tmp = "restart_time;restart_leds;";
 
 		if(hdspindown_support) {
 			var excluded = "";
@@ -500,17 +515,35 @@ function applyRule(){
 			action_script_tmp += "restart_usb_idle;";
 		}
 
-		action_script_tmp += "restart_time;";
-		if(restart_httpd_flag)
+		if(restart_httpd_flag) {
 			action_script_tmp += "restart_httpd;";
-		action_script_tmp += "restart_upnp;";
+
+			if ((getRadioItemCheck(document.form.https_crt_gen) == "1"
+				|| uploaded_cert
+				|| document.form.https_crt_cn.value != '<% nvram_get("https_crt_cn"); %>')
+				&& ('<% nvram_get("enable_ftp"); %>' == "1")
+				&& ('<% nvram_get("ftp_tls"); %>' == "1")) {
+					action_script_tmp += ";restart_ftpd";
+			}
+		}
+
 		if(restart_firewall_flag)
 			action_script_tmp += "restart_firewall;";
+		else
+			action_script_tmp += "restart_upnp;";	// Normally done by restart_firewall
+
 		if(pwrsave_support)
 			action_script_tmp += "pwrsave;";
-		document.form.action_script.value = action_script_tmp;
 
-		showLoading();
+		if(needReboot){
+			action_script_tmp = "reboot";
+			document.form.action_wait.value = httpApi.hookGet("get_default_reboot_time");
+		}
+
+		if (getRadioItemCheck(document.form.ntpd_enable) != '<% nvram_get("ntpd_enable"); %>')
+			action_script_tmp += "restart_dnsmasq;";
+
+		document.form.action_script.value = action_script_tmp;
 		document.form.submit();
 	}
 }
@@ -618,7 +651,7 @@ function validForm(){
 	if(hdspindown_support) {
 		if($('select[name="usb_idle_enable"]').val() == 1) {
 			$('input[name="usb_idle_timeout"]').prop("disabled", false);
-			if (!validator.range($('input[name="usb_idle_timeout"]')[0], 60, 3600))
+			if (!validator.range($('input[name="usb_idle_timeout"]')[0], 60, 9999))
 				return false;
 		}
 		else {
@@ -642,7 +675,7 @@ function validForm(){
 	}
 
 	if (!validator.range(document.form.http_lanport, 1, 65535))
-		/*return false;*/ document.form.http_lanport = 80;
+		return false;
 	if (HTTPS_support && !validator.range(document.form.https_lanport, 1, 65535) && !tmo_support)
 		return false;
 
@@ -672,13 +705,14 @@ function validForm(){
 		alert("You must configure at least one SSH authentication method!");
 		return false;
 	}
-
+/*
 	if(!document.form.misc_httpport_x.disabled &&
 			isPortConflict(document.form.misc_httpport_x.value)){
 		alert(isPortConflict(document.form.misc_httpport_x.value));
 		document.form.misc_httpport_x.focus();
 		return false;
 	}
+*/
 	else if(!document.form.misc_httpsport_x.disabled &&
 			isPortConflict(document.form.misc_httpsport_x.value) && HTTPS_support){
 		alert(isPortConflict(document.form.misc_httpsport_x.value));
@@ -690,11 +724,13 @@ function validForm(){
 		document.form.https_lanport.focus();
 		return false;
 	}
+/*
 	else if(document.form.misc_httpsport_x.value == document.form.misc_httpport_x.value && HTTPS_support){
 		alert("<#https_port_conflict#>");
 		document.form.misc_httpsport_x.focus();
 		return false;
 	}
+*/
 	else if(!validator.rangeAllowZero(document.form.http_autologout, 10, 999, '<% nvram_get("http_autologout"); %>'))
 		return false;
 
@@ -1283,6 +1319,16 @@ function change_url(num, flag){
 		document.getElementById("wan_access_url").innerHTML = "<#https_access_url#> ";
 		document.getElementById("wan_access_url").innerHTML += "<a href=\"https://"+host_addr+":"+https_wanport+"\" target=\"_blank\" style=\"color:#FC0;text-decoration: underline; font-family:Lucida Console;\">http<span>s</span>://"+host_addr+"<span>:"+https_wanport+"</span></a>";		
 	}
+	else if(flag = 'http_lan'){
+		var http_lanport_num_new = num;
+		if (http_lanport_num_new != 80)
+			var lanport_str = ":"+http_lanport_num_new;
+		else
+			var lanport_str = "";
+
+		document.getElementById("http_access_page").innerHTML = "<#https_access_url#> ";
+                document.getElementById("http_access_page").innerHTML += "<a href=\"http://"+theUrl+lanport_str+"\" target=\"_blank\" style=\"color:#FC0;text-decoration: underline; font-family:Lucida Console;\">http://"+theUrl+lanport_str+"</a>";
+	}
 }
 
 /* password item show or not */
@@ -1561,7 +1607,6 @@ function warn_jffs_format(){
 <input type="hidden" name="reboot_schedule_enable" value="<% nvram_get("reboot_schedule_enable"); %>">
 <input type="hidden" name="usb_idle_exclude" value="<% nvram_get("usb_idle_exclude"); %>">
 <input type="hidden" name="shell_timeout" value="<% nvram_get("shell_timeout"); %>">
-<input type="hidden" name="http_lanport" value="<% nvram_get("http_lanport"); %>">
 
 <table class="content" align="center" cellpadding="0" cellspacing="0">
   <tr>
@@ -1585,7 +1630,7 @@ function warn_jffs_format(){
 		<td bgcolor="#4D595D" valign="top">
 			<div>&nbsp;</div>
 			<div class="formfonttitle"><#menu5_6#> - <#menu5_6_2#></div>
-			<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+			<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 			<div class="formfontdesc"><#System_title#></div>
 
 			<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable">
@@ -1650,6 +1695,7 @@ function warn_jffs_format(){
 					  <td colspan="2"><#USB_Setting#></td>
 					</tr>
 				</thead>
+
 				<tr>
 					<th width="40%"><a class="hintstyle" href="javascript:void(0);" onClick="openHint(11,11)"><#usb_HDD_Hibernation#></a></th>
 					<td>
@@ -1680,7 +1726,32 @@ function warn_jffs_format(){
 						<input type="checkbox" name="usb_idle_exclude_i">sdi</input>
 					</td>
 				</tr>
+				<tr id="reduce_usb3_tr" style="display:none">
+					<th width="40%"><a class="hintstyle" href="javascript:void(0);" onclick="openHint(3, 29)">USB Mode</a></th>
+					<td>
+						<select class="input_option" name="usb_usb3" onchange="enableUsbMode(this.value);">
+							<option value="0" <% nvram_match("usb_usb3", "0", "selected"); %>>USB 2.0</option>
+							<option value="1" <% nvram_match("usb_usb3", "1", "selected"); %>>USB 3.0</option>
+						</select>
+						<script>
+							var needReboot = false;
 
+							if( based_modelid == "DSL-AC68U" || based_modelid == "RT-AC3200" || based_modelid == "RT-AC87U" || based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" || based_modelid == "RT-AC56S" || based_modelid == "RT-AC56U" || based_modelid == "RT-AC55U" || based_modelid == "RT-AC55UHP" || based_modelid == "RT-N18U" || based_modelid == "RT-AC88U" || based_modelid == "RT-AC86U" || based_modelid == "AC2900" || based_modelid == "RT-AC3100" || based_modelid == "RT-AC5300" || based_modelid == "RP-AC68U" || based_modelid == "RT-AC58U" || based_modelid == "RT-AC82U" || based_modelid == "MAP-AC3000" || based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U" || based_modelid == "4G-AC68U" || based_modelid == "BLUECAVE" || based_modelid == "RT-AC88Q" || based_modelid == "RT-AD7200" || based_modelid == "RT-N65U" || based_modelid == "GT-AC5300" || based_modelid == "RT-AX88U" || based_modelid == "RT-AX95U" || based_modelid == "BRT-AC828"
+							){
+								$("#reduce_usb3_tr").show();
+							}
+
+							function enableUsbMode(v){
+								httpApi.nvramGetAsync({
+									data: ["usb_usb3"],
+									success: function(nvram){
+										needReboot = (nvram.usb_usb3 != v);
+									}
+								})
+							}
+						</script>
+					</td>
+				</tr>
 			</table>
 
 			<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;">
@@ -1689,6 +1760,19 @@ function warn_jffs_format(){
 					  <td colspan="2"><#t2BC#></td>
 					</tr>
 				</thead>
+				<tr id="ntpd_server_tr">
+					<th>Enable local NTP server</th>
+					<td>
+						<input type="radio" name="ntpd_enable" value="1" onclick="showhide('ntpd_redir_tr', 1);" <% nvram_match_x("","ntpd_enable","1", "checked"); %> ><#checkbox_Yes#>
+						<input type="radio" name="ntpd_enable" value="0" onclick="showhide('ntpd_redir_tr', 0);" <% nvram_match_x("","ntpd_enable","0", "checked"); %> ><#checkbox_No#>
+					</td>
+				</tr>
+				<tr id="ntpd_redir_tr">
+					<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,29)">Intercept NTP client requests</a></th>
+					<td>
+						<input type="radio" name="ntpd_server_redir" value="1" <% nvram_match_x("","ntpd_server_redir","1", "checked"); %> ><#checkbox_Yes#>
+						<input type="radio" name="ntpd_server_redir" value="0" <% nvram_match_x("","ntpd_server_redir","0", "checked"); %> ><#checkbox_No#>
+					</td>
 				<tr>
 					<th><a class="hintstyle"  href="javascript:void(0);" onClick="openHint(11,2)"><#LANHostConfig_x_TimeZone_itemname#></a></th>
 					<td>
@@ -1755,9 +1839,15 @@ function warn_jffs_format(){
 				<tr>
 					<th><a class="hintstyle"  href="javascript:void(0);" onClick="openHint(11,3)"><#LANHostConfig_x_NTPServer_itemname#></a></th>
 					<td>
-						<input type="text" maxlength="256" class="input_32_table" name="ntp_server0" value="<% nvram_get("ntp_server0"); %>" onKeyPress="return validator.isString(this, event);" autocorrect="off" autocapitalize="off">
+						<input type="text" maxlength="31" class="input_32_table" name="ntp_server0" value="<% nvram_get("ntp_server0"); %>" onKeyPress="return validator.isString(this, event);" autocorrect="off" autocapitalize="off">
 						<a href="javascript:openLink('x_NTPServer1')"  name="x_NTPServer1_link" style=" margin-left:5px; text-decoration: underline;"><#LANHostConfig_x_NTPServer1_linkname#></a>
 						<div id="svc_hint_div" style="display:none;"><span style="color:#FFCC00;"><#General_x_SystemTime_syncNTP#></span></div>
+					</td>
+				</tr>
+				<tr>
+					<th>Secondary NTP Server</th>
+					<td>
+						<input type="text" maxlength="31" class="input_32_table" name="ntp_server1" value="<% nvram_get("ntp_server1"); %>" onKeyPress="return validator.isString(this, event);" autocorrect="off" autocapitalize="off">
 					</td>
 				</tr>
 				<tr>
@@ -1788,6 +1878,13 @@ function warn_jffs_format(){
 						<input type="radio" name="btn_ez_radiotoggle" id="turn_WPS" class="input" style="display:none;" value="0"><label for="turn_WPS"><#WPS_btn_actWPS#></label>
 						<input type="radio" name="btn_ez_radiotoggle" id="turn_WiFi" class="input" style="display:none;" value="1" <% nvram_match_x("", "btn_ez_radiotoggle", "1", "checked"); %>><label for="turn_WiFi" id="turn_WiFi_str"><#WPS_btn_toggle#></label>
 						<input type="radio" name="btn_ez_radiotoggle" id="turn_LED" class="input" style="display:none;" value="0" <% nvram_match_x("", "btn_ez_mode", "1", "checked"); %>><label for="turn_LED" id="turn_LED_str">Turn LED On/Off</label>
+					</td>
+				</tr>
+				<tr>
+					<th>Disable LEDs</th>
+					<td>
+						<input type="radio" name="led_disable" class="input" value="1" <% nvram_match_x("", "led_disable", "1", "checked"); %>><#checkbox_Yes#>
+						<input type="radio" name="led_disable" class="input" value="0" <% nvram_match_x("", "led_disable", "0", "checked"); %>><#checkbox_No#>
 					</td>
 				</tr>
 				<tr id="pwrsave_tr">
@@ -1910,7 +2007,13 @@ function warn_jffs_format(){
 						</select>
 					</td>
 				</tr>
-		
+				<tr id="http_lanport">
+					<th>HTTP LAN port</th>
+					<td>
+						<input type="text" maxlength="5" class="input_6_table" name="http_lanport" value="<% nvram_get("http_lanport"); %>" onKeyPress="return validator.isNumber(this,event);" onBlur="change_url(this.value, 'http_lan');" autocorrect="off" autocapitalize="off">
+						<span id="http_access_page"></span>
+					</td>
+				</tr>
 				<tr id="https_lanport">
 					<th><#System_HTTPS_LAN_Port#></th>
 					<td>
