@@ -94,8 +94,8 @@ static int get_allowedips(struct sk_buff *skb, const u8 *ip, u8 cidr,
 struct dump_ctx {
 	struct wg_device *wg;
 	struct wg_peer *next_peer;
-	struct allowedips_node *next_allowedip;
 	u64 allowedips_seq;
+	struct allowedips_node *next_allowedip;
 };
 
 #define DUMP_CTX(cb) ((struct dump_ctx *)(cb)->args)
@@ -196,15 +196,9 @@ err:
 
 static int wg_get_device_start(struct netlink_callback *cb)
 {
-	struct nlattr **attrs = genl_family_attrbuf(&genl_family);
 	struct wg_device *wg;
-	int ret;
 
-	ret = nlmsg_parse(cb->nlh, GENL_HDRLEN + genl_family.hdrsize, attrs,
-			  genl_family.maxattr, device_policy, NULL);
-	if (ret < 0)
-		return ret;
-	wg = lookup_interface(attrs, cb->skb);
+	wg = lookup_interface(genl_dumpit_info(cb)->attrs, cb->skb);
 	if (IS_ERR(wg))
 		return PTR_ERR(wg);
 	DUMP_CTX(cb)->wg = wg;
@@ -389,10 +383,10 @@ static int set_peer(struct wg_device *wg, struct nlattr **attrs)
 
 	peer = wg_pubkey_hashtable_lookup(wg->peer_hashtable,
 					  nla_data(attrs[WGPEER_A_PUBLIC_KEY]));
+	ret = 0;
 	if (!peer) { /* Peer doesn't exist yet. Add a new one. */
-		ret = -ENODEV;
-		if (flags & WGPEER_F_REMOVE_ME)
-			goto out; /* Tried to remove a non-existing peer. */
+		if (flags & (WGPEER_F_REMOVE_ME | WGPEER_F_UPDATE_ONLY))
+			goto out;
 
 		/* The peer is new, so there aren't allowed IPs to remove. */
 		flags &= ~WGPEER_F_REPLACE_ALLOWEDIPS;
@@ -413,17 +407,22 @@ static int set_peer(struct wg_device *wg, struct nlattr **attrs)
 		}
 		up_read(&wg->static_identity.lock);
 
-		ret = -ENOMEM;
 		peer = wg_peer_create(wg, public_key, preshared_key);
-		if (!peer)
+		if (IS_ERR(peer)) {
+			/* Similar to the above, if the key is invalid, we skip
+			 * it without fanfare, so that services don't need to
+			 * worry about doing key validation themselves.
+			 */
+			ret = PTR_ERR(peer) == -EKEYREJECTED ? 0 : PTR_ERR(peer);
+			peer = NULL;
 			goto out;
+		}
 		/* Take additional reference, as though we've just been
 		 * looked up.
 		 */
 		wg_peer_get(peer);
 	}
 
-	ret = 0;
 	if (flags & WGPEER_F_REMOVE_ME) {
 		wg_peer_remove(peer);
 		goto out;
