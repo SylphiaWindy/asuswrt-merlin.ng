@@ -71,7 +71,8 @@ static ddns_system_t asus_update = {
 	.checkip_url  = DYNDNS_MY_CHECKIP_URL,
 	.checkip_ssl  = DYNDNS_MY_IP_SSL,
 
-	.server_name  = "nwsrv-ns1.asus.com",
+//	.server_name  = "nwsrv-ns1.asus.com",
+	.server_name  = "ns1.asuscomm.com",
 	.server_url   = "/ddns/update.jsp"
 };
 
@@ -85,7 +86,8 @@ static ddns_system_t asus_register = {
 	.checkip_url  = DYNDNS_MY_CHECKIP_URL,
 	.checkip_ssl  = DYNDNS_MY_IP_SSL,
 
-	.server_name  = "nwsrv-ns1.asus.com",
+//	.server_name  = "nwsrv-ns1.asus.com",
+	.server_name  = "ns1.asuscomm.com",
 	.server_url   = "/ddns/register.jsp"
 };
 
@@ -99,7 +101,8 @@ static ddns_system_t asus_unregister = {
 	.checkip_url  = DYNDNS_MY_CHECKIP_URL,
 	.checkip_ssl  = DYNDNS_MY_IP_SSL,
 
-	.server_name  = "nwsrv-ns1.asus.com",
+//	.server_name  = "nwsrv-ns1.asus.com",
+	.server_name  = "ns1.asuscomm.com",
 	.server_url   = "/ddns/register.jsp"
 };
 
@@ -205,6 +208,7 @@ static int request_reg(ddns_t *ctx, ddns_info_t *info, ddns_alias_t *alias)
 				}
 			}
 			snprintf(acme_arg, sizeof(acme_arg),"acme_challenge=1&txtdata=%s&", buf);
+			logit(LOG_DEBUG, "Acme challenge published to DNS: %s", acme_arg);
 		}
 	}
 #endif
@@ -311,7 +315,7 @@ static int response_update(http_trans_t *trans, ddns_info_t *info, ddns_alias_t 
 #endif
 			return RC_DDNS_RSP_NOTOK;
 		case 230:
-			logit(LOG_WARNING, "New domaine update success, old domain '%s'", domain);
+			logit(LOG_WARNING, "New domain update success, old domain '%s'", domain);
 #ifdef ASUSWRT
 			nvram_set ("ddns_old_name", domain);
 #endif

@@ -55,7 +55,7 @@ var Wan_Setting = [
 function initial(){
 	show_menu();
 	// https://www.asus.com/support/FAQ/1011715/
-	httpApi.faqURL("faq", "1011715", "https://www.asus.com", "/support/FAQ/");	
+	httpApi.faqURL("1011715", function(url){document.getElementById("faq").href=url;});	
 
 }
 
@@ -212,7 +212,7 @@ function validForm(){
 	}	
 	
 	if(document.form.wan_hwaddr_x_now.value.length > 0)
-			if(!check_macaddr(document.form.wan_hwaddr_x_now,check_hwaddr_flag(document.form.wan_hwaddr_x_now))){
+			if(!check_macaddr(document.form.wan_hwaddr_x_now,check_hwaddr_flag(document.form.wan_hwaddr_x_now,'inner'))){
 					document.form.wan_hwaddr_x_now.select();
 					document.form.wan_hwaddr_x_now.focus();
 		 	return false;
@@ -527,7 +527,7 @@ function showMAC(){
 </script>
 </head>
 
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="hiddenMask" class="popup_bg">
 	<table cellpadding="5" cellspacing="0" id="dr_sweet_advise" class="dr_sweet_advise" align="center">

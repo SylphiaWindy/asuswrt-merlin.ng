@@ -1,6 +1,103 @@
 Asuswrt-Merlin 384/NG Changelog
 ===============================
 
+384.14 (14-Dec-2019)
+  - NEW: Implement option to prevent Firefox's automatic usage of DoH.
+         By default, this will only apply if you have DNSPrivacy
+         enabled, or if you have DNSFilter enabled with a global
+         filter, to ensure that Firefox will not bypass either of
+         these.  You can also have this override applied all the
+         time, or completely disable it.
+  - NEW: Added "split" busybox applet.
+  - NEW: Added IPv6 support to Network Analysis webui
+  - NOTE: You might need to reconfigure your device hostname on the
+          LAN -> LAN IP page due to a GPL-level change (exclusing
+          the RT-AX88U)
+  - UPDATED: RT-AX88U to GPL 384_6436 (with Let's Encrypt fixes
+             backported from 384_81351)
+  - UPDATED: RT-AC68U, RT-AC86U to GPL 384_81351
+  - UPDATED: RT-AC88U, RT-AC3100 to GPL 384_81351 and binary
+             blobs from 384_81116
+  - UPDATED: RT-AC5300 to GPL 384_81351 and binary blobs from
+             384_81219.
+
+  - UPDATED: miniupnpd 20190824
+  - UPDATED: dnsmasq 2.80-95-g1aef66b (themiron)
+  - UPDATED: OpenSSL 1.0.2 to 1.0.2t (themiron)
+  - UPDATED: OpenSSL 1.1.1 to 1.1.1d (themiron)
+  - UPDATED: Curl 7.66.0
+  - UPDATED: nano 4.4
+  - UPDATED: OpenVPN 2.4.8
+  - UPDATED: OUI database to 2018-08-17 version
+  - UPDATED: CA root certificates to October 9th 2019
+  - CHANGED: Made webui SSL certificate generation compliant with
+             IOS 13 and MacOS 10.15 new requirements.
+  - CHANGED: Rewrote the faketc script used to inject Codel into
+             Adaptive QoS as a C program for improved performance.
+  - CHANGED: Moved /usr/bin/ip to /usr/sbin/ip on the RT-AC86U and
+             RT-AX88U to match other models.
+  - CHANGED: IPv6 firewall now accepts empty values for local IP
+             (which means any local IP).
+  - FIXED: Webui wouldn't notify when running dangerously low on
+           free nvram (feature was lost at some point in the past)
+  - FIXED: Non-working link to YandexDNS on the webui for
+           Russian models.
+  - FIXED: Backported various httpd fixes to RT-AX88 from other
+           models.
+  - FIXED: Custom clientlist would be wiped if stopping an
+           OpenVPN server instance.
+  - FIXED: Incorrect detection of EUI64 addresses on the IPv6
+           firewall (would prevent using ::/0 for instance).
+  - FIXED: EUI64 support missing while in Load Balancing or
+           using Multicast IPTV.
+  - FIXED: Asus DDNS failing to update due to an invalid
+           certificate on Asus's server.
+  - FIXED: Let's Encrypt support would sometime fail when using
+           Asus DDNS (fixed DNS publishing of validation record)
+           (in addition to general failure fixed by GPL 81351)
+  - FIXED: IPv6 neighbour solicitation drop toggle not working
+           for some models
+  - FIXED: openvpn-event scripts would be executed even if custom
+           scripts were globally disabled
+
+
+384.13_2 (14-Dec-2019)
+  This release is only available for the RT-AC87U and RT-AC3200.
+
+  - NEW: Added "split" busybox applet.
+  - UPDATED: OpenSSL 1.0.2 to 1.0.2t (themiron)
+  - UPDATED: OpenSSL 1.1.1 to 1.1.1d (themiron)
+  - UPDATED: CA root certificates to October 9th 2019
+  - CHANGED: Rewrote the faketc script used to inject Codel into
+             Adaptive QoS as a C program for improved performance.
+  - CHANGED: Made webui SSL certificate generation compliant with
+             IOS 13 and MacOS 10.15 new requirements.
+  - CHANGED: IPv6 firewall now accepts empty values for local IP
+             (which means any local IP).
+  - FIXED: Non-working link to YandexDNS on the webui for
+           Russian models.
+  - FIXED: Webui wouldn't notify when running dangerously low on
+           free nvram (feature was lost at some point in the past)
+  - FIXED: Custom clientlist would be wiped if stopping an
+           OpenVPN server instance.
+  - FIXED: Incorrect detection of EUI64 addresses on the IPv6
+           firewall (would prevent using ::/0 for instance).
+  - FIXED: EUI64 support missing while in Load Balancing or
+           using Multicast IPTV.
+  - FIXED: Asus DDNS failing to update due to an invalid
+           certificate on Asus's server.
+  - FIXED: Let's Encrypt no longer working due to deprecated ACMEv1
+           protocol usage (backport from GPL 81351)
+  - FIXED: Let's Encrypt support would sometime fail when using
+           Asus DDNS (fixed DNS publishing of validation record)
+  - FIXED: IPv6 neighbour solicitation drop toggle not working
+           for some models
+
+
+384.13_1 (12-Aug-2019)
+  - FIXED: RT-AC87U failing to boot when configuring in AP mode.
+
+
 384.13 (31-July-2019)
   - NEW: AiMesh Router and node support.  Note that automatic live
          update of Merlin-based nodes is not supported, you will have
@@ -855,7 +952,7 @@ Asuswrt-Merlin 384/NG Changelog
 
    Also note that the primary download site was changed to
    Sourceforge, due to numerous issues with Mediafire.  Onedrive
-   will be the oficial mirror to the SF.net download site.
+   will be the official mirror to the SF.net download site.
 
    - NEW: Moved to Asus382 codebase.  Some of the most important
           changes between Asus380 and Asus382:

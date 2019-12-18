@@ -14,6 +14,7 @@
 
 #ifndef _shutils_h_
 #define _shutils_h_
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <rtconfig.h>
@@ -82,6 +83,8 @@ extern int _eval(char *const argv[], const char *path, int timeout, pid_t *ppid)
  */
 #define CPU0	"0"
 #define CPU1	"1"
+#define CPU2	"2"
+#define CPU3	"3"
 
 extern int _cpu_eval(int *ppid, char *cmds[]);
 
@@ -153,6 +156,14 @@ static inline char * strcat_r(const char *s1, const char *s2, char *buf)
 }	
 
 /* Strip trailing CR/NL from string <s> */
+#define strip_new_line(s) ({					\
+	char *end = (s) + strlen(s) -1;				\
+	while((end >= (s)) && (*end == '\n' || *end == '\r'))	\
+		*end-- = '\0';					\
+	s;							\
+})
+
+/* Strip trailing CR/NL from string <s> and space ' '. */
 #define chomp(s) ({ \
 	char *c = (s) + strlen((s)) - 1; \
 	while ((c > (s)) && (*c == '\n' || *c == '\r' || *c == ' ')) \
@@ -160,6 +171,8 @@ static inline char * strcat_r(const char *s1, const char *s2, char *buf)
 	s; \
 })
 
+/* skip the space ' ' in front of s (string) */
+#define skip_space(p)	{if(p != NULL){ while(isspace(*p)) p++;}}
 
 /* Simple version of _eval() (no timeout and wait for child termination) */
 #if 1
@@ -221,6 +234,20 @@ static inline char * strcat_r(const char *s1, const char *s2, char *buf)
 				word[strcspn(word, ":")] = '\0', \
 				word[sizeof(word) - 1] = '\0', \
 				next = strchr(next, ':'))
+
+/* Copy each token in wordlist delimited by ascii_59 into word */
+#define foreach_59(word, wordlist, next) \
+		for (next = &wordlist[strspn(wordlist, ";")], \
+				strncpy(word, next, sizeof(word)), \
+				word[strcspn(word, ";")] = '\0', \
+				word[sizeof(word) - 1] = '\0', \
+				next = strchr(next, ';'); \
+				strlen(word); \
+				next = next ? &next[strspn(next, ";")] : "", \
+				strncpy(word, next, sizeof(word)), \
+				word[strcspn(word, ";")] = '\0', \
+				word[sizeof(word) - 1] = '\0', \
+				next = strchr(next, ';'))
 
 /* Copy each token in wordlist delimited by ascii_60 into word */
 #define foreach_60(word, wordlist, next) \
@@ -392,5 +419,6 @@ extern char *ATE_FACTORY_MODE_STR();
 extern char *ATE_UPGRADE_MODE_STR();
 extern int hex2str(unsigned char *hex, char *str, int hex_len);
 extern void reset_stacksize(int new_stacksize);
+extern int arpcache(char *tgmac, char *tgip);
 
 #endif /* _shutils_h_ */
