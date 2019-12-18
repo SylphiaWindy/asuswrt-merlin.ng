@@ -320,6 +320,109 @@ Maintainer-visible changes
   use -std=gnu99 in CFLAGS.  This is known to be needed when doing
   i386/i686 builds on RHEL5.
 
+
+Version 2.4.8
+=============
+This is primarily a maintenance release with minor bugfixes and improvements.
+
+New features
+------------
+- Support compiling with OpenSSL 1.1 without deprecated APIs
+
+- handle PSS padding in cryptoapicert (necessary for TLS >= 1.2)
+
+
+User visible changes
+--------------------
+- do not abort when hitting the combination of "--pull-filter" and
+  "--mode server" (this got hit when starting OpenVPN servers using
+  the windows GUI which installs a pull-filter to force ip-win32)
+
+- increase listen() backlog queue to 32  (improve response behaviour
+  on openvpn servers using TCP that get portscanned)
+
+- fix and enhance documentation (INSTALL, man page, ...)
+
+
+Bug fixes
+---------
+- the combination "IPv6 and proto UDP and SOCKS proxy" did not work - as
+  a workaround, force IPv4 in this case until a full implementation for
+  IPv6-UDP-SOCKS can be made.
+
+- fix IPv6 routes on tap interfaces on OpenSolaris/OpenIndiana
+
+- fix building with LibreSSL
+
+- do not set pkcs11-helper 'safe fork mode' (should fix PIN querying in
+  systemd environments)
+
+- repair windows builds
+
+- repair Darwin builds (remove -no-cpp-precomp flag)
+
+
+
+Version 2.4.7
+=============
+This is primarily a maintenance release with minor bugfixes and improvements.
+
+New features
+------------
+- ifconfig-ipv6(-push): allow using hostnames (in place of IPv6 addresses)
+
+- new option: --ciphersuites to select TLS 1.3 cipher suites
+  (--cipher selects TLS 1.2 and earlier ciphers)
+
+- enable dhcp on tap adapter using interactive service
+  (previously this required a privileged netsh.exe call from OpenVPN)
+
+- clarify and expand management interface documentation
+
+- add Interactive Service developer documentation
+
+
+User visible changes
+--------------------
+- add message explaining early TLS client hello failure (if TLS 1.0
+  only clients try to connect to TLS 1.3 capable servers)
+
+- --show-tls will now display TLS 1.3 and TLS 1.2 ciphers in separate
+  lists (if built with OpenSSL 1.1.1+)
+
+- don't print OCC warnings about 'key-method', 'keydir' and 'tls-auth'
+  (unnecessary warnings, and will cause spurious warnings with tls-crypt-v2)
+
+- bump version of openvpn plugin argument structs to 5
+
+- plugin: Export base64 encode and decode functions
+
+- man: add security considerations to --compress section
+
+
+Bug fixes
+---------
+- print port numbers (again) for incoming IPv4 connections received on
+  a dual-stacked IPv6 socket.  This got lost at some point during 
+  rewrite of the dual-stack code and proper printing of IPv4 addresses.
+
+- fallback to password authentication when auth-token fails
+
+- fix combination of --dev tap and --topology subnet across multiple 
+  platforms (BSDs, MacOS, and Solaris).
+
+- fix Windows CryptoAPI usage for TLS 1.2 signatures
+
+- fix option handling in combination with NCP negotiation and OCC
+  (--opt-verify failure on reconnect if NCP modified options and server
+  verified "original" vs. "modified" options)
+
+- mbedtls: print warning if random personalisation fails
+
+- fix subnet topology on NetBSD (2.4).
+
+
+
 Version 2.4.6
 =============
 This is primarily a maintenance release with minor bugfixes and improvements,

@@ -61,22 +61,22 @@ function applyRule(){
 
 function isPortConflict_webdav(obj){
 	if(obj.value == '<% nvram_get("login_port"); %>'){
-		alert("<#portConflictHint#> HTTP LAN port.");
+		alert("<#portConflictHint#>: HTTP LAN port.");
 		obj.focus();
 		return false;
 	}	
 	else if(obj.value == '<% nvram_get("dm_http_port"); %>'){
-		alert("<#portConflictHint#> Download Master.");
+		alert("<#portConflictHint#>: <#DM_title#>.");
 		obj.focus();
 		return false;
 	}	
 	else if(obj.value == '<% nvram_get("misc_httpsport_x"); %>'){
-		alert("<#portConflictHint#> [<#FirewallConfig_x_WanWebPort_itemname#>(HTTPS)].");
+		alert("<#portConflictHint#>: [<#FirewallConfig_x_WanWebPort_itemname#>(HTTPS)].");
 		obj.focus();
 		return false;
 	}	
 	else if(obj.value == '<% nvram_get("misc_httpport_x"); %>'){
-		alert("<#portConflictHint#> [<#FirewallConfig_x_WanWebPort_itemname#>(HTTP)].");
+		alert("<#portConflictHint#>: [<#FirewallConfig_x_WanWebPort_itemname#>(HTTP)].");
 		obj.focus();
 		return false;
 	}
@@ -91,7 +91,7 @@ function unlockAcc(){
 }
 </script>
 </head>
-<body onload="initial();" onunload="return unload_body();">
+<body onload="initial();" onunload="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <iframe name="hidden_frame" id="hidden_frame" width="0" height="0" frameborder="0" scrolling="no"></iframe>
@@ -125,8 +125,7 @@ function unlockAcc(){
 							  <td bgcolor="#4D595D" valign="top">
 									<div>&nbsp;</div>
 									<div class="formfonttitle">AiCloud 2.0 - <#Settings#></div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
-
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 								  <div class="formfontdesc" style="font-style: italic;font-size: 14px;">
 										<#AiCloud_PWD_Mechanism#><br>
 										<#AiCloud_PWD_note1#><br>

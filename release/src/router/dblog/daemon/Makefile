@@ -9,6 +9,9 @@ endif
 
 CFLAGS += -DASUS
 CFLAGS += -I$(TOP)/shared -I$(SRCBASE)/include
+ifeq ($(RTCONFIG_BCMARM),y)
+CFLAGS += -I$(SRCBASE)/shared/bcmwifi/include -DTYPEDEF_FLOAT_T
+endif
 LDFLAGS = -L$(TOP)/shared -lshared -L$(TOP)/nvram${BCMEX}${EX7} ${EXTRA_NV_LDFLAGS} -lnvram
 INSTALL = install
 
@@ -16,7 +19,7 @@ ifeq ($(RTCONFIG_QTN),y)
 LDFLAGS += -L$(TOP)/libqcsapi_client -lqcsapi_client
 endif
 
-OBJS = dblog.o dblog_syslog.o dblog_wifi.o dblog_dm.o dblog_ms.o dblog_amas.o respipc.o
+OBJS = dblog.o dblog_syslog.o dblog_wifi.o dblog_dm.o dblog_ms.o dblog_amas.o dblog_hyd.o respipc.o
 
 ifneq ($(wildcard ./prebuild$(BCMEX)$(EXHND)),)
 all:

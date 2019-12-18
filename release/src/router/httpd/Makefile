@@ -24,7 +24,6 @@ ifeq ($(RTCONFIG_BCMWL6),y)
 CFLAGS += -I$(SRCBASE)/wl/exe/
 endif
 endif
-CFLAGS += -I$(TOP)/push_log
 CFLAGS += -DASUS_DDNS -DTRANSLATE_ON_FLY -DFLASH_EMULATOR -DLinux -DWSC 
 
 ifeq ($(RTCONFIG_NETOOL),y)
@@ -72,8 +71,12 @@ ifeq ($(RTN14U),y)
 CFLAGS += -DBAND_2G_ONLY
 endif
 
-ifeq ($(RTN14U)$(RTAC52U)$(RTAC51U)$(RTN11P)$(RTN300)$(RTN54U)$(RTAC1200HP)$(RTN56UB1)$(RTN56UB2)$(RTAC54U)$(RTAC1200)$(RTAC1200GA1)$(RTAC1200GU),y)
+ifeq ($(RTN14U)$(RTAC52U)$(RTAC51U)$(RTN11P)$(RTN300)$(RTN54U)$(RTAC1200HP)$(RTN56UB1)$(RTN56UB2)$(RTAC54U)$(RTAC1200)$(RTAC1200V2)$(RTAC1200GA1)$(RTAC1200GU),y)
 CFLAGS += -DRA_ESW
+endif
+
+ifeq ($(BUILD_NAME), RT-AC1200_V2)
+CFLAGS += -DRTAC1200V2
 endif
 
 ifeq ($(RTCONFIG_DNSMASQ),y)
@@ -117,7 +120,7 @@ OBJS += web-qca.o
 else ifeq ($(CONFIG_ALPINE),y)
 OBJS += web-alpine.o
 else ifeq ($(CONFIG_LANTIQ),y)
-OBJS += web-lantiq.o
+OBJS += $(if $(wildcard sysdeps/web-lantiq.c),web-lantiq.o,prebuild/web-lantiq.o)
 else
 OBJS += web-broadcom.o
 ifeq ($(RTCONFIG_QTN),y)
@@ -159,8 +162,13 @@ endif
 LIBS += -lm
 
 ifeq ($(RTCONFIG_PUSH_EMAIL),y)
-CFLAGS += -L$(TOP)/openssl/include
-LIBS += -L$(TOP)/openssl -lcrypto -lssl -ldl
+ifeq ($(RTCONFIG_OPENSSL11),y)
+CFLAGS += -I$(TOP)/openssl-1.1/include
+LIBS += -L$(TOP)/openssl-1.1 -lssl -lcrypto -ldl
+else
+CFLAGS += -I$(TOP)/openssl/include
+LIBS += -L$(TOP)/openssl -lssl -lcrypto -ldl
+endif
 endif
 
 ifeq ($(RTCONFIG_BCMARM),y)
@@ -188,16 +196,25 @@ endif
 
 ifeq ($(RTCONFIG_HTTPS),y)
 CFLAGS += -I$(TOP)/mssl
-CFLAGS += -I$(TOP)/openssl/include
 LIBS += -L$(TOP)/mssl -lmssl
+ifeq ($(RTCONFIG_OPENSSL11),y)
+CFLAGS += -I$(TOP)/openssl-1.1/include
+LIBS += -L$(TOP)/openssl-1.1 -lssl -lcrypto -ldl
+else
+CFLAGS += -I$(TOP)/openssl/include
 LIBS += -L$(TOP)/openssl -lssl -lcrypto -ldl
+endif
 endif
 
 ifeq ($(RTCONFIG_OPENVPN),y)
 OBJS += openvpn_options.o
 CFLAGS += -I$(TOP)/libvpn
 LIBS += -L$(TOP)/libvpn -lvpn
+ifeq ($(RTCONFIG_OPENSSL11),y)
+LIBS += -L$(TOP)/openssl-1.1 -lssl -lcrypto -ldl
+else
 LIBS += -L$(TOP)/openssl -lssl -lcrypto -ldl
+endif
 endif
 
 CFLAGS += -I$(TOP)/json-c
@@ -250,7 +267,9 @@ endif
 
 ifeq ($(RTCONFIG_LETSENCRYPT),y)
 CFLAGS  += -I$(TOP)/libletsencrypt
+ifneq ($(RTCONFIG_OPENSSL11),y) # Kludge, library still uses 1.0.2
 LIBS += -L$(TOP)/libletsencrypt -lletsencrypt
+endif
 endif
 
 ifeq ($(RTCONFIG_PERMISSION_MANAGEMENT),y)
@@ -270,11 +289,16 @@ CFLAGS += -I$(TOP)/libqcsapi_client_10g
 LIBS += -L$(TOP)/libqcsapi_client_10g -lqcsapi_client
 endif
 
+ifeq ($(RTCONFIG_CONNDIAG),y)
+CFLAGS += -I$(TOP)/rc
+LIBS += -L$(TOP)/rc -lconn_diag
+endif
+
 CFLAGS += -I$(TOP)/libpasswd
 LIBS += -L$(TOP)/libpasswd -lpasswd
 
 ifeq ($(RTCONFIG_LANTIQ),y)
-LIBS += -L$(TOP)/fapi_wlan_common-1.0.0.1 -lfapiwlancommon -ldl -L$(TOP)/libhelper-1.4.0.2 -lhelper -L$(TOP)/libfapi-0.1 -lfapi -L$(TOP)/wireless_tools/ -liw
+LIBS += -L$(TOP)/fapi_wlan_common-05.04.00.131 -lfapiwlancommon -ldl -L$(TOP)/libhelper-1.4.0.2 -lhelper -L$(TOP)/libfapi-0.1 -lfapi -L$(TOP)/wireless_tools/ -liw
 endif
 
 all: httpd #test_apps

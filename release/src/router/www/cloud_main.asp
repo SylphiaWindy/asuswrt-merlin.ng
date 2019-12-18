@@ -68,11 +68,11 @@ function initial(){
 	show_menu();
 	if(is_CN){
 		$("#googleplay").hide();
-		$("#wandoujia").show();
+		$("#googleApp_CN").show();
 	}
 	else{
 		$("#googleplay").show();
-		$("#wandoujia").hide();
+		$("#googleApp_CN").hide();
 	}
 	document.getElementById("app_state").style.display = "";
 	
@@ -165,7 +165,6 @@ function initial(){
 var wans_mode ='<% nvram_get("wans_mode"); %>';
 var MAX_RETRY_NUM = 5;
 var external_ip_retry_cnt = MAX_RETRY_NUM;
-var privateIP_notes_str = "The wireless router currently uses a private WAN IP address.<p>This router may be in the multiple-NAT environment, and accessing AiCloud from WAN cannot work in this environment." /*untranslated*/
 function show_warning_message(){
 	if(realip_support && wans_mode != "lb"){
 		if(realip_state != "2" && external_ip_retry_cnt > 0){
@@ -176,23 +175,24 @@ function show_warning_message(){
 		}
 		else if(realip_state != "2"){
 			if(validator.isPrivateIP(wanlink_ipaddr())){
-				document.getElementById("privateIP_notes").innerHTML = privateIP_notes_str;
+				document.getElementById("privateIP_notes").innerHTML = "<#AiCloud_privateIP_notes#>";
 				document.getElementById("privateIP_notes").style.display = "";
 			}
 		}
 		else{
 			if(!external_ip){
-				document.getElementById("privateIP_notes").innerHTML = privateIP_notes_str;
+				document.getElementById("privateIP_notes").innerHTML = "<#AiCloud_privateIP_notes#>";
 				document.getElementById("privateIP_notes").style.display = "";
 			}
 		}
 	}
 	else if(validator.isPrivateIP(wanlink_ipaddr())){
-		document.getElementById("privateIP_notes").innerHTML = privateIP_notes_str;
+		document.getElementById("privateIP_notes").innerHTML = "<#AiCloud_privateIP_notes#>";
 		document.getElementById("privateIP_notes").style.display = "";
 	}
 }
 
+<% get_realip(); %>
 function get_real_ip(){
 	$.ajax({
 		url: 'get_real_ip.asp',
@@ -308,10 +308,10 @@ function show_partition(){
 function getStyleSheet(cssName, rule) {
 	for (i = 0; i < document.styleSheets.length; i++) {
 		if (document.styleSheets[i].href.toString().indexOf(cssName) != -1) {
-			for (x = 0; x < document.styleSheets[i].rules.length; x++) {
-				if(document.styleSheets[i].rules[x].type == 1) {
-					if (document.styleSheets[i].rules[x].selectorText.toString() == rule) {
-						return document.styleSheets[i].rules[x];
+			for (x = 0; x < document.styleSheets[i].cssRules.length; x++) {
+				if(document.styleSheets[i].cssRules[x].type == 1) {
+					if (document.styleSheets[i].cssRules[x].selectorText.toString() == rule) {
+						return document.styleSheets[i].cssRules[x];
 					}
 				}
 			}
@@ -636,7 +636,7 @@ function update_applist(e){
 
 </script>
 </head>
-<body onload="initial();" onunload="return unload_body();">
+<body onload="initial();" onunload="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 	<table cellpadding="5" cellspacing="0" id="dr_sweet_advise" class="dr_sweet_advise" align="center">
@@ -686,18 +686,15 @@ function update_applist(e){
 									<div>&nbsp;</div>
 									<div class="formfonttitle">AiCloud 2.0</div>									
 									<div><img id="return_btn" onclick="location.href='/cloud_main.asp'" align="right" style="cursor:pointer;position:absolute;margin-left:690px;margin-top:-45px;" title="Back to AiCloud 2.0" src="/images/backprev.png" onMouseOver="this.src='/images/backprevclick.png'" onMouseOut="this.src='/images/backprev.png'"></div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div id="cloud_uninstall" style="display:none;">
    										<table>	
   										<tr>
    												<td><div class="formfontdesc" id="usbHint"><#AiCloud_maintext_note#></div></td> 
   										</tr>
 											<tr>
-   												<td><div class="formfontdesc" id="usbHint2"><#Learn_more#> : <a href="http://www.asus.com/search/results.aspx?SearchKey=AiCloud&SearchType=FAQ&IsSupport=True&Page=1" target="_blank" style="color:#FC0;text-decoration: underline; font-family:Lucida Console;">GO</a></div></td> 
-  										</tr>  
-  										<!--tr>
-   												<td valign="top"><div id="cloud_movie" style="box-shadow: 2px 2px 15px #222;margin-top: 50px;width:400px;height:241px;margin-left:165px;background:url(images/movie.jpg) no-repeat center;cursor:pointer" onClick="window.open('http://www.youtube.com/watch?v=MgIAfG5ZhPs')"></div></td>
-  										</tr-->  	   
+   												<td><div class="formfontdesc" id="usbHint2"><#Learn_more#> : <a href="https://www.asus.com/search/results.aspx?SearchKey=AiCloud&SearchType=FAQ&IsSupport=True&Page=1" target="_blank" style="color:#FC0;text-decoration: underline; font-family:Lucida Console;">GO</a></div></td> 
+  										</tr>  	   
   										<tr>
    												<td align="center" width="740px" height="60px">
 													<div id="gotonext">
@@ -715,7 +712,7 @@ function update_applist(e){
 
 									  <tr class="block_bg">
 									    <td colspan="5" class="cloud_main_radius">
-												<div style="padding:10px;width:95%;font-style:italic;font-size:14px;">
+												<div style="padding:10px;width:95%;font-size:14px;">
 												<#AiCloud_maintext_note#>
 													<br/><br/>
 													<table width="100%" >
@@ -726,19 +723,19 @@ function update_applist(e){
 																 	<div id="accessMethod"></div>
 																 	</li>
 																	<li style="margin-top:-5px;">
-																	 <#FAQ_Find#> <a style="font-weight: bolder;text-decoration: underline;" href="http://www.asus.com/search/results.aspx?SearchKey=AiCloud&SearchType=FAQ&IsSupport=True&Page=1" target="_blank">GO</a>
+																	 <#FAQ_Find#> <a style="font-weight: bolder;text-decoration: underline;" href="https://www.asus.com/search/results.aspx?SearchKey=AiCloud&SearchType=FAQ&IsSupport=True&Page=1" target="_blank">GO</a>
 																	</li>
 																</ul>
 															</td>
 															<td>							
 																<a id="googleplay" href="https://play.google.com/store/apps/details?id=com.asustek.aicloud" target="_blank">
-																	<div style="width:172px;height:51px;background:url('images/cloudsync/googleplay.png') no-repeat;background-size:75%;"></div>
+																	<div style="width:172px;height:51px;background:url('images/googleplay.png') no-repeat;background-size:75%;"></div>
 																</a>												
-																<a id="wandoujia" href="http://www.wandoujia.com/apps/com.asus.aihome" target="_blank" style="display:none">
-																	<div style="width:130px;height:51px;text-align: center;line-height:51px;line-height: 51px;font-size: 20px;font-weight: bold;text-decoration: underline;">豌豆荚</div>
+																<a id="googleApp_CN" href="https://dlcdnets.asus.com/pub/ASUS/LiveUpdate/Release/Wireless/ASUSRouter_Android_Release.apk" target="_blank" style="display:none">
+																	<div style="width:130px;text-align: center;font-size: 20px;border: 1px solid #BDBDBD;border-radius: 6px;padding: 7px 4px;margin-bottom:12px;">Android App</div>
 																</a>			
 																<a href="https://itunes.apple.com/us/app/aicloud-lite/id527118674" target="_blank">
-																	<div style="width:172px;height:51px;background:url('images/cloudsync/AppStore.png') no-repeat;background-size:75%;"></div>
+																	<div style="width:172px;height:51px;background:url('images/AppStore.png') no-repeat;background-size:75%;"></div>
 																</a>	
 															</td>
 														</tr>
@@ -761,13 +758,13 @@ function update_applist(e){
 											</td>
 
 									    <td width="6px">
-												<div align="center"><img src="/images/line.png"></div>
+												<div class="line_vertical"></div>
 											</td>
 
 									    <td width="1px"></td>
 
 									    <td>
-											<div style="padding:10px;width:95%;font-style:italic;font-size:14px;">
+											<div style="padding:10px;width:95%;font-size:14px;">
 												<#aicloud_disk_desc#>												
 											</div>
 										</td>
@@ -808,18 +805,18 @@ function update_applist(e){
 										
 									  <tr class="block_bg block_line">
 									    <td class="cloud_main_radius_left" width="20%" height="50px">
-												<div align="center"><img src="/images/cloudsync/002.png">
+												<div style="padding:10px;" align="center"><img src="/images/cloudsync/002.png">
 													<div align="center" style="margin-top:10px;font-size: 18px;text-shadow: 1px 1px 0px black;"><#Smart_Access#></div>
 												</div>
 											</td>
 									    <td>
-												<div align="center"><img src="/images/line.png"></div>
+												<div class="line_vertical"></div>
 											</td>
 									    <td>
 												&nbsp;
 											</td>
-									    <td width="">
-												<div style="padding:10px;width:95%;font-style:italic;font-size:14px;">
+									    <td>
+												<div style="padding:10px;width:95%;font-size:14px;">
 													<#smart_access_desc#>
 												</div>
 											</td>
@@ -856,44 +853,24 @@ function update_applist(e){
 
 									  <tr class="block_bg">
 									    <td class="cloud_main_radius_left" width="20%" height="50px">
-												<div align="center">
+												<div style="padding:10px;" align="center">
 													<img src="/images/cloudsync/003.png">
 													<div align="center" style="margin-top:10px;font-size: 18px;text-shadow: 1px 1px 0px black;"><#smart_sync#></div>
 												</div>
 											</td>
 									    <td>
-												<div align="center"><img src="/images/line.png"></div>
+												<div class="line_vertical"></div>
 											</td>
 									    <td>
 												&nbsp;
 											</td>
 									    <td width="">
-												<div style="padding:10px;width:95%;font-style:italic;font-size:14px;">
+												<div style="padding:10px;width:95%;font-size:14px;">
 													<#smart_sync_desc#>
 												</div>
 											</td>
 									    <td class="cloud_main_radius_right" width="100">
-												<!--div align="center" class="left" style="width:94px; float:left; cursor:pointer;" id="radio_smartSync_enable"></div>
-												<div class="iphone_switch_container" style="height:32px; width:74px; position: relative; overflow: hidden">
-												<script type="text/javascript">
-													$('#radio_smartSync_enable').iphoneSwitch('<% nvram_get("enable_cloudsync"); %>',
-														function() {
-															document.form.enable_cloudsync.value = 1;
-															FormActions("start_apply.htm", "apply", "restart_cloudsync", "3");
-															showLoading();	
-															document.form.submit();
-														},
-														function() {
-															document.form.enable_cloudsync.value = 0;
-															FormActions("start_apply.htm", "apply", "restart_cloudsync", "3");
-															showLoading();	
-															document.form.submit();	
-														}
-													);
-												</script>			
-												</div-->
-
-						  					<input name="button" type="button" class="button_gen_short" onclick="location.href='/cloud_sync.asp'" value="<#btn_go#>"/>
+						  					<input name="button" type="button" class="button_gen" onclick="location.href='/cloud_sync.asp'" value="<#btn_go#>"/>
 											</td>
 									  </tr>
 									  <tr>

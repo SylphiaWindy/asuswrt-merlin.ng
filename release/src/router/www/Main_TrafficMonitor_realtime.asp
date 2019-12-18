@@ -219,7 +219,7 @@ function switchPage(page){
 </script>
 </head>
 
-<body onload="show_menu();init();" >
+<body onload="show_menu();init();" class="bg">
 <div id="TopBanner"></div>
 
 <div id="Loading" class="popup_bg"></div>
@@ -282,7 +282,7 @@ function switchPage(page){
 						</td>
         			</tr>
         			<tr>
-          				<td height="5"><img src="images/New_ui/export/line_export.png" /></td>
+          				<td height="5"><div class="splitLine"></div></td>
         			</tr>
         			<tr>
 						<td height="30" align="left" valign="middle" >
@@ -292,10 +292,10 @@ function switchPage(page){
         			<tr>
           				<td align="left" valign="middle">
 							<!-- add some hard code of style attributes to wordkaround for IE 11-->
-							<table width="95%" border="1" align="left" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="DescTable" style="font-size:12px; font-family:Arial, Helvetica, sans-serif;	border: 1px solid #000000; border-collapse: collapse;">
-								<tr><th style="	font-family:Arial, Helvetica, sans-serif; background-color:#1F2D35; color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;	border: 1px solid #222;	border-collapse: collapse; background:#2F3A3E;" width="16%"></th><th style="	font-family:Arial, Helvetica, sans-serif; background-color:#1F2D35; color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;	border: 1px solid #222;	border-collapse: collapse; background:#2F3A3E;" width="26%"><#Internet#></th><th style="	font-family:Arial, Helvetica, sans-serif; background-color:#1F2D35; color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;	border: 1px solid #222;	border-collapse: collapse; background:#2F3A3E;" width="29%"><#tm_wired#></th><th style="	font-family:Arial, Helvetica, sans-serif; background-color:#1F2D35; color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;	border: 1px solid #222;	border-collapse: collapse; background:#2F3A3E;" width="29%"><#tm_wireless#></th></tr>
-								<tr><th style="	font-family:Arial, Helvetica, sans-serif; background-color:#1F2D35; color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;	border: 1px solid #222;	border-collapse: collapse; background:#2F3A3E;"><#tm_reception#></th><td style="color:#FF9000;padding-left: 10px;	background-color:#475a5f; border: 1px solid #222;border-collapse: collapse;"><#tm_recp_int#></td><td style="color:#3CF;padding-left: 10px;	background-color:#475a5f; border: 1px solid #222;border-collapse: collapse;"><#tm_recp_wired#></td><td style="color:#3CF;padding-left: 10px;	background-color:#475a5f; border: 1px solid #222;border-collapse: collapse;"><#tm_recp_wireless#></td></tr>
-								<tr><th style="	font-family:Arial, Helvetica, sans-serif; background-color:#1F2D35; color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;	border: 1px solid #222;	border-collapse: collapse; background:#2F3A3E;"><#tm_transmission#></th><td style="color:#3CF;padding-left: 10px;	background-color:#475a5f; border: 1px solid #222;border-collapse: collapse;"><#tm_trans_int#></td><td style="color:#FF9000;padding-left: 10px;	background-color:#475a5f; border: 1px solid #222;border-collapse: collapse;"><#tm_trans_wired#></td><td style="color:#FF9000;padding-left: 10px;	background-color:#475a5f; border: 1px solid #222;border-collapse: collapse;"><#tm_trans_wireless#></td></tr>
+							<table width="95%" border="1" align="left" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="DescTable" style="font-size:12px; border: 1px solid #000000; border-collapse: collapse;">
+								<tr><th style="color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;	border-collapse: collapse;" width="16%"></th><th class="tm_title_bg" style="color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;padding-left: 10px;border-collapse: collapse;" width="26%"><#Internet#></th><th class="tm_title_bg" style="color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;border-collapse: collapse;" width="29%"><#tm_wired#></th><th class="tm_title_bg" style="color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px; border-collapse: collapse;" width="29%"><#tm_wireless#></th></tr>
+								<tr><th class="tm_title_bg" style="color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;	border-collapse: collapse;"><#tm_reception#></th><td style="color:#FF9000;padding-left: 10px;	border-collapse: collapse;"><#tm_recp_int#></td><td style="color:#3CF;padding-left: 10px;border-collapse: collapse;"><#tm_recp_wired#></td><td style="color:#3CF;padding-left: 10px;border-collapse: collapse;"><#tm_recp_wireless#></td></tr>
+								<tr><th class="tm_title_bg" style="color:#FFFFFF; font-weight:normal; line-height:15px; height: 30px; text-align:left; font-size:12px;	padding-left: 10px;border-collapse: collapse;"><#tm_transmission#></th><td style="color:#3CF;padding-left: 10px;border-collapse: collapse;"><#tm_trans_int#></td><td style="color:#FF9000;padding-left: 10px;;border-collapse: collapse;"><#tm_trans_wired#></td><td style="color:#FF9000;padding-left: 10px;border-collapse: collapse;"><#tm_trans_wireless#></td></tr>
 							</table>
 							<!--End-->
           				</td>
@@ -372,7 +372,7 @@ function switchPage(page){
 
 						<div id='bwm-controls'>
 							<tr>
-								<th width='50%'><#Traffic_Avg#></th>
+								<th width='50%'></th>
 								<td>
 									<a href='javascript:switchAvg(1)' id='avg1'>Off</a>,
 									<a href='javascript:switchAvg(2)' id='avg2'>2x</a>,
@@ -382,23 +382,23 @@ function switchPage(page){
 								</td>
 							</tr>
 							<tr>
-								<th><#Traffic_Max#></th>
+								<th></th>
 								<td>
 									<a href='javascript:switchScale(0)' id='scale0'>Uniform</a>,
 									<a href='javascript:switchScale(1)' id='scale1'>Per IF</a>
 								</td>
 							</tr>
 							<tr>
-								<th><#Traffic_SvgDisp#></th>
+								<th></th>
 								<td>
 									<a href='javascript:switchDraw(0)' id='draw0'>Solid</a>,
 									<a href='javascript:switchDraw(1)' id='draw1'>Line</a>
 								</td>
 							</tr>
 							<tr>
-								<th><#Traffic_Color#></th>
+								<th></th>
 								<td>
-									<a href='javascript:switchColor()' id='drawcolor'>-</a><a href='javascript:switchColor(1)' id='drawrev'><#Traffic_Reverse#></a>
+									<a href='javascript:switchColor()' id='drawcolor'>-</a><a href='javascript:switchColor(1)' id='drawrev'></a>
 								</td>
 							</tr>
 						</div>

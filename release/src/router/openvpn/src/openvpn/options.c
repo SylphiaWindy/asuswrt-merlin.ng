@@ -1031,67 +1031,6 @@ get_ip_addr(const char *ip_string, int msglevel, bool *error)
     return ret;
 }
 
-/* helper: parse a text string containing an IPv6 address + netbits
- * in "standard format" (2001:dba::/32)
- * "/nn" is optional, default to /64 if missing
- *
- * return true if parsing succeeded, modify *network and *netbits
- */
-bool
-get_ipv6_addr( const char *prefix_str, struct in6_addr *network,
-               unsigned int *netbits, int msglevel)
-{
-    char *sep, *endp;
-    int bits;
-    struct in6_addr t_network;
-
-    sep = strchr( prefix_str, '/' );
-    if (sep == NULL)
-    {
-        bits = 64;
-    }
-    else
-    {
-        bits = strtol( sep+1, &endp, 10 );
-        if (*endp != '\0' || bits < 0 || bits > 128)
-        {
-            msg(msglevel, "IPv6 prefix '%s': invalid '/bits' spec", prefix_str);
-            return false;
-        }
-    }
-
-    /* temporary replace '/' in caller-provided string with '\0', otherwise
-     * inet_pton() will refuse prefix string
-     * (alternative would be to strncpy() the prefix to temporary buffer)
-     */
-
-    if (sep != NULL)
-    {
-        *sep = '\0';
-    }
-
-    if (inet_pton( AF_INET6, prefix_str, &t_network ) != 1)
-    {
-        msg(msglevel, "IPv6 prefix '%s': invalid IPv6 address", prefix_str);
-        return false;
-    }
-
-    if (sep != NULL)
-    {
-        *sep = '/';
-    }
-
-    if (netbits != NULL)
-    {
-        *netbits = bits;
-    }
-    if (network != NULL)
-    {
-        *network = t_network;
-    }
-    return true;                /* parsing OK, values set */
-}
-
 /**
  * Returns newly allocated string containing address part without "/nn".
  *
@@ -1769,6 +1708,7 @@ show_settings(const struct options *o)
     SHOW_STR(cryptoapi_cert);
 #endif
     SHOW_STR(cipher_list);
+    SHOW_STR(cipher_list_tls13);
     SHOW_STR(tls_cert_profile);
     SHOW_STR(tls_verify);
     SHOW_STR(tls_export_cert);
@@ -2288,7 +2228,7 @@ options_postprocess_verify_ce(const struct options *options, const struct connec
         }
         if (options->pull_filter_list)
         {
-            msg(M_USAGE, "--pull-filter cannot be used with --mode server");
+            msg(M_WARN, "--pull-filter ignored for --mode server");
         }
         if (!(proto_is_udp(ce->proto) || ce->proto == PROTO_TCP_SERVER))
         {
@@ -2551,12 +2491,12 @@ options_postprocess_verify_ce(const struct options *options, const struct connec
         msg(M_USAGE, "specify only one of --tls-server, --tls-client, or --secret");
     }
 
-//    if (options->ssl_flags & (SSLF_CLIENT_CERT_NOT_REQUIRED|SSLF_CLIENT_CERT_OPTIONAL))
-//    {
-//        msg(M_WARN, "WARNING: POTENTIALLY DANGEROUS OPTION "
-//            "--verify-client-cert none|optional (or --client-cert-not-required) "
-//            "may accept clients which do not present a certificate");
-//    }
+    if (options->ssl_flags & (SSLF_CLIENT_CERT_NOT_REQUIRED|SSLF_CLIENT_CERT_OPTIONAL))
+    {
+        msg(M_WARN, "WARNING: POTENTIALLY DANGEROUS OPTION "
+            "--verify-client-cert none|optional (or --client-cert-not-required) "
+            "may accept clients which do not present a certificate");
+    }
 
     if (options->key_method == 1)
     {
@@ -2783,6 +2723,7 @@ options_postprocess_verify_ce(const struct options *options, const struct connec
         MUST_BE_UNDEF(pkcs12_file);
 #endif
         MUST_BE_UNDEF(cipher_list);
+        MUST_BE_UNDEF(cipher_list_tls13);
         MUST_BE_UNDEF(tls_cert_profile);
         MUST_BE_UNDEF(tls_verify);
         MUST_BE_UNDEF(tls_export_cert);
@@ -2889,6 +2830,24 @@ options_postprocess_mutate_ce(struct options *o, struct connection_entry *ce)
 #else
         msg(M_USAGE, "--mssfix must specify a parameter");
 #endif
+    }
+
+    /* our socks code is not fully IPv6 enabled yet (TCP works, UDP not)
+     * so fall back to IPv4-only (trac #1221)
+     */
+    if (ce->socks_proxy_server && proto_is_udp(ce->proto) && ce->af != AF_INET)
+    {
+        if (ce->af == AF_INET6)
+        {
+            msg(M_INFO, "WARNING: '--proto udp6' is not compatible with "
+                "'--socks-proxy' today.  Forcing IPv4 mode." );
+        }
+        else
+        {
+            msg(M_INFO, "NOTICE: dual-stack mode for '--proto udp' does not "
+                "work correctly with '--socks-proxy' today.  Forcing IPv4." );
+        }
+        ce->af = AF_INET;
     }
 
     /*
@@ -3498,7 +3457,7 @@ calc_options_string_link_mtu(const struct options *o, const struct frame *frame)
         struct key_type fake_kt;
         init_key_type(&fake_kt, o->ciphername, o->authname, o->keysize, true,
                       false);
-        frame_add_to_extra_frame(&fake_frame, -(crypto_max_overhead()));
+        frame_remove_from_extra_frame(&fake_frame, crypto_max_overhead());
         crypto_adjust_frame_parameters(&fake_frame, &fake_kt, o->use_iv,
                                        o->replay, cipher_kt_mode_ofb_cfb(fake_kt.cipher));
         frame_finalize(&fake_frame, o->ce.link_mtu_defined, o->ce.link_mtu,
@@ -3787,11 +3746,15 @@ options_warning_safe_scan2(const int msglevel,
                            const char *b1_name,
                            const char *b2_name)
 {
-    /* we will stop sending 'proto xxx' in OCC in a future version
-     * (because it's not useful), and to reduce questions when
-     * interoperating, we start not-printing a warning about it today
+    /* We will stop sending 'key-method', 'keydir', 'proto' and 'tls-auth' in
+     * OCC in a future version (because it's not useful). To reduce questions
+     * when interoperating, we no longer printing a warning about it.
      */
-    if (strncmp(p1, "proto ", 6) == 0)
+    if (strprefix(p1, "key-method ")
+        || strprefix(p1, "keydir ")
+        || strprefix(p1, "proto ")
+        || strprefix(p1, "tls-auth ")
+        || strprefix(p1, "tun-ipv6"))
     {
         return;
     }
@@ -6403,6 +6366,9 @@ add_option(struct options *options,
         remap_redirect_gateway_flags(options);
 #endif
         options->routes->flags |= RG_ENABLE;
+#ifdef ASUSWRT
+        setenv_unsigned(es, "routes_flags", options->routes->flags);
+#endif
     }
     else if (streq(p[0], "remote-random-hostname") && !p[1])
     {
@@ -7873,6 +7839,11 @@ add_option(struct options *options,
     {
         VERIFY_PERMISSION(OPT_P_GENERAL);
         options->tls_cert_profile = p[1];
+    }
+    else if (streq(p[0], "tls-ciphersuites") && p[1] && !p[2])
+    {
+        VERIFY_PERMISSION(OPT_P_GENERAL);
+        options->cipher_list_tls13 = p[1];
     }
     else if (streq(p[0], "crl-verify") && p[1] && ((p[2] && streq(p[2], "dir"))
                                                    || (p[2] && streq(p[1], INLINE_FILE_TAG) ) || !p[2]) && !p[3])

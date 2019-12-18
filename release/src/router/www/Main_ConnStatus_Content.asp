@@ -101,7 +101,7 @@ function show_conns() {
 </script>
 </head>
 
-<body onload="initial();">
+<body onload="initial();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 
@@ -138,8 +138,9 @@ function show_conns() {
 									<td valign="top">
 										<div>&nbsp;</div>
 										<div class="formfonttitle"><#System_Log#> - <#System_act_connections#></div>
-										<div style="margin-conn:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+										<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 										<div class="formfontdesc"><#System_log_connections#></div>
+										<div class="formfontdesc">Click on a column header to sort by that field.</div>
 
                                                                                 <div style="margin-top:8px">
 											<div id="connblock"></div>

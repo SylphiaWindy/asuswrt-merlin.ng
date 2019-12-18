@@ -1,4 +1,4 @@
-/* Copyright (C) 1991-2018 Free Software Foundation, Inc.
+/* Copyright (C) 1991-2019 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
    The GNU C Library is free software; you can redistribute it and/or
@@ -14,6 +14,16 @@
    You should have received a copy of the GNU General Public
    License along with the GNU C Library; if not, see
    <https://www.gnu.org/licenses/>.  */
+
+#ifndef _LIBC
+
+/* Don't use __attribute__ __nonnull__ in this compilation unit.  Otherwise gcc
+   optimizes away the pattern == NULL test below.  */
+# define _GL_ARG_NONNULL(params)
+
+# include <config.h>
+
+#endif
 
 #include <glob.h>
 

@@ -8,7 +8,7 @@
 <meta HTTP-EQUIV="Expires" CONTENT="-1">
 <link rel="shortcut icon" href="images/favicon.png">
 <link rel="icon" href="images/favicon.png">
-<title><#Web_Title#> - Privacy</title>
+<title><#Web_Title#> - <#menu_privacy#></title>
 <link rel="stylesheet" type="text/css" href="index_style.css">
 <link rel="stylesheet" type="text/css" href="form_style.css">
 <script language="JavaScript" type="text/javascript" src="/state.js"></script>
@@ -54,7 +54,7 @@ function initial(){
 
 	url = "https://www.trendmicro.com/en_us/about/legal/privacy-policy-product.html"
 	$("#tm_eula_url").attr("href",url);
-	url = "https://success.trendmicro.com/data-collection-disclosure";
+	url = "https://esupport.trendmicro.com/en-us/home/pages/technical-support/1120473.aspx";
 	$("#tm_disclosure_url").attr("href",url);
 
 	if(eula_status.ASUS_EULA == "1"){
@@ -78,10 +78,10 @@ function initial(){
 		document.getElementById("tm_eula").style.display = "none";
 	}
 
-	if(eula_status.ASUS_EULA == "0" && eula_status.TM_EULA == "0")
-		$("#privacy_desc").css('display', 'block');
-	else
+	if(eula_status.ASUS_EULA == "1" || eula_status.TM_EULA == "1")
 		$("#privacy_desc").css('display', 'none');
+	else
+		$("#privacy_desc").css('display', 'block');
 
 	setTimeout(update_link_status, 1000);
 }
@@ -141,6 +141,8 @@ function withdraw_eula(eula_type){
 					return false;
 				}
 				else{
+					document.getElementById('asus_withdraw_btn').style.display = "none";
+					document.getElementById('asus_loadingicon').style.display = "";
 					$.ajax({
 						url: "/unreg_ASUSDDNS.cgi",
 
@@ -155,6 +157,8 @@ function withdraw_eula(eula_type){
 
 		case "tm":
 			if(confirm("<#withdraw_confirm#>")){
+				document.getElementById('tm_withdraw_btn').style.display = "none";
+				document.getElementById('tm_loadingicon').style.display = "";
 				$.ajax({
 					url: "/set_TM_EULA.cgi",
 					data:{
@@ -173,7 +177,7 @@ function withdraw_eula(eula_type){
 
 </script>
 </head>
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 
@@ -201,8 +205,8 @@ function withdraw_eula(eula_type){
 							<tr>
 								<td bgcolor="#4D595D" valign="top">
 									<div>&nbsp;</div>
-									<div id="formfonttitle" class="formfonttitle"><#menu5_6#> - ASUS NOTICE( for privacy)</div>
-									<div style="margin:10px 0 10px 5px;"><img src="/images/New_ui/export/line_export.png"></div>
+									<div id="formfonttitle" class="formfonttitle"><#menu5_6#> - <#ASUS_Notice_Privacy#></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div id="privacy_desc" style="font-size:14px; margin: 20px 10px auto 10px; display:none;"><#ASUS_privacy_desc#></div>
 									<div id="asus_eula" class="eula_withdraw" style="display:none;">
 										<div class="eula_withdraw_title" id="asus_eula_title"><#ASUS_eula_withdraw0_AlexaIFTTT#></div>
@@ -217,8 +221,11 @@ function withdraw_eula(eula_type){
 											</ol>
 											</div>
 										</div>
-										<div>
-											<input class="button_gen" style="margin-left: 305px; margin-bottom:10px;" name="asus_withdraw_btn" onclick="withdraw_eula('asus');" type="button" value="<#withdraw_str#>"/>
+										<div style="text-align: center;">
+											<div style="margin: 0px auto 10px;">
+												<input class="button_gen" id="asus_withdraw_btn" onclick="withdraw_eula('asus');" type="button" value="<#withdraw_str#>"/>
+												<img id="asus_loadingicon" style="display:none;" src="/images/InternetScan.gif">
+											</div>
 										</div>
 									</div>
 									<div id="tm_eula" class="eula_withdraw" style="display:none;">
@@ -230,8 +237,11 @@ function withdraw_eula(eula_type){
 											<div><#TM_data_collection#></div>
 											</div>
 										</div>
-										<div>
-											<input class="button_gen" style="margin-left: 305px; margin-bottom:10px;" name="asus_withdraw_btn" onclick="withdraw_eula('tm');" type="button" value="<#withdraw_str#>"/>
+										<div style="text-align:center;">
+											<div style="margin: 0px auto 10px;">
+												<input class="button_gen" id="tm_withdraw_btn" onclick="withdraw_eula('tm');" type="button" value="<#withdraw_str#>"/>
+												<img id="tm_loadingicon" style="display:none;" src="/images/InternetScan.gif">
+											</div>
 										</div>
 									</div>
 								</td>

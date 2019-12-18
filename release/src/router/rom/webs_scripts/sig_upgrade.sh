@@ -1,11 +1,14 @@
 #!/bin/sh
 
+IS_BCMHND=`nvram get rc_support|grep -i bcmhnd`
+
 wget_timeout=`nvram get apps_wget_timeout`
 #wget_options="-nv -t 2 -T $wget_timeout --dns-timeout=120"
 wget_options="-q -t 2 -T $wget_timeout"
 
 nvram set sig_state_upgrade=0 # INITIALIZING
 nvram set sig_state_error=0
+nvram set sig_state_update=0
 
 #openssl support rsa check
 rsa_enabled=`nvram show | grep rc_support | grep HTTPS`
@@ -22,7 +25,9 @@ fi
 # get signature zip file
 forsq=`nvram get apps_sq`
 #urlpath=`nvram get sig_state_url`
-echo 3 > /proc/sys/vm/drop_caches
+if [ -z "$IS_BCMHND" ]; then
+	echo 3 > /proc/sys/vm/drop_caches
+fi
 if [ "$update_url" != "" ]; then
 	echo "---- wget fw /tmp/update_url ----" > /tmp/sig_upgrade.log
 	wget $wget_options ${update_url}/$sig_file -O /tmp/rule.trf
@@ -66,6 +71,7 @@ else
 
 	if [ "$rsasign_check_ret" == "1" ]; then
 		echo "---- sig check OK ----" >> /tmp/sig_upgrade.log
+		nvram set sig_update_t=`date +%s`   #set timestamp for download signature and restart_wrs
 		if [ -f /jffs/signature/rule.trf ];then
 			echo "---- sig rule mv /tmp to /jffs/signature ----" >> /tmp/sig_upgrade.log
 			rm /jffs/signature/rule.trf
@@ -77,7 +83,6 @@ else
 		fi
 		if [ "$1" == "" ];then
 			rc rc_service restart_wrs
-			nvram set sig_update_t=`date +%s`	#set timestamp for download signature and restart_wrs
 		else
 			echo "do nothing..."	
 		fi

@@ -139,7 +139,7 @@ function done_validating(action){
 </script>
 </head>
 
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 
@@ -175,7 +175,7 @@ function done_validating(action){
 								<td bgcolor="#4D595D" valign="top">
 									<div>&nbsp;</div>
 									<div class="formfonttitle"><#menu5_5#> - <#menu5_5_2#></div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div class="formfontdesc"><#FirewallConfig_UrlFilterEnable_sectiondesc#></div>
 									<!--div class="formfontdesc"><#FirewallConfig_KeywordFilterEnable_sectiondesc2#></div-->	
 									<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable">
@@ -213,7 +213,7 @@ function done_validating(action){
 										</tr>
 										<tr>
 											<td width="80%">
-												<input type="text" maxlength="32" class="input_32_table" name="url_keyword_x_0" onKeyPress="return validator.isString(this, event)" autocorrect="off" autocapitalize="off">
+												<input type="text" maxlength="64" class="input_32_table" name="url_keyword_x_0" onKeyPress="return validator.isString(this, event)" autocorrect="off" autocapitalize="off">
 											</td>
 											<td width="20%">	
 												<input class="add_btn" type="button" onClick="addRow(document.form.url_keyword_x_0, 64);" value="">

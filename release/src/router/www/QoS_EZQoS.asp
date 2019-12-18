@@ -25,6 +25,7 @@
 <script type="text/javascript" src="/form.js"></script>
 <script type="text/javascript" src="client_function.js"></script>
 <script type="text/javascript" src="/js/httpApi.js"></script>
+<script language="JavaScript" type="text/javascript" src="/js/asus_eula.js"></script>
 <style>
 .QISform_wireless{
 	width:600px;
@@ -246,6 +247,7 @@
 <% wanlink(); %>
 <% first_wanlink(); %>
 var wans_dualwan_orig = '<% nvram_get("wans_dualwan"); %>';
+var dualwan_type = wans_dualwan_orig.split(" ");
 var wans_flag = (wans_dualwan_orig.search("none") != -1 || !parent.dualWAN_support) ? 0 : 1;
 var dsllink_statusstr = "";
 if(wans_flag == 1)	//dual_wan enabled
@@ -254,6 +256,9 @@ else
 	dsllink_statusstr = wanlink_statusstr();
 var dsl_DataRateDown = parseInt("<% nvram_get("dsllog_dataratedown"); %>");
 var dsl_DataRateUp = parseInt("<% nvram_get("dsllog_datarateup"); %>");
+
+var qos_enable_orig = '<% nvram_get("qos_enable"); %>';
+var qos_type_orig = '<% nvram_get("qos_type"); %>';
 
 //HND_ROUTER HW NAT (fc_disable/runner_disable) ON: 0/0 ; OFF: 1/1
 var fc_disable_orig = '<% nvram_get("fc_disable"); %>';
@@ -264,6 +269,7 @@ var bwdpi_app_rulelist = "<% nvram_get("bwdpi_app_rulelist"); %>".replace(/&#60/
 var category_title = ["", "<#Adaptive_Game#>", "<#Adaptive_Stream#>","<#Adaptive_Message#>", "<#Adaptive_WebSurf#>","<#Adaptive_FileTransfer#>", "<#Adaptive_Others#>"];
 var cat_id_array = [[9,20], [8], [4], [0,5,6,15,17], [13,24], [1,3,14], [7,10,11,21,23]];
 var ctf_disable = '<% nvram_get("ctf_disable"); %>';
+var ctf_disable_force  = '<% nvram_get("ctf_disable_force "); %>';
 var ctf_fa_mode = '<% nvram_get("ctf_fa_mode"); %>';
 var qos_bw_rulelist = "<% nvram_get("qos_bw_rulelist"); %>".replace(/&#62/g, ">").replace(/&#60/g, "<");
 var select_all_checked = 0;
@@ -280,8 +286,10 @@ var overhead_presets = [["0", "0", ""],
 			["1", "32", "PPPoE VC/Mux"],
 			["1", "40", "PPPoE LLC/Snap"]];
 
-if(based_modelid == "RT-AC68A"){	//MODELDEP : Spec special fine tune
-	bwdpi_support = false;
+var adaptiveqos_support = isSupport("adaptive_qos");
+
+if(geforceNow_support){
+	var orig_nvgfn_enable = httpApi.nvramGet(["nvgfn_enable"], true).nvgfn_enable;
 }
 
 function show_up_down(value){
@@ -290,9 +298,15 @@ function show_up_down(value){
 		document.getElementById('download_tr').style.display = "";
 		if(mtwancfg_support){
 			document.getElementById('wan_1_tr').style.display = "";
-			document.getElementById('wan_2_tr').style.display = "";
-			document.getElementById('upload2_tr').style.display = "";
-			document.getElementById('download2_tr').style.display = "";
+			if(dualwan_type[1].toLowerCase() == "none"){
+				document.getElementById('wan_2_tr').style.display = "none";
+				document.getElementById('upload2_tr').style.display = "none";
+				document.getElementById('download2_tr').style.display = "none";
+			}else{
+				document.getElementById('wan_2_tr').style.display = "";
+				document.getElementById('upload2_tr').style.display = "";
+				document.getElementById('download2_tr').style.display = "";
+			}
 		}
 	}
 	else {
@@ -359,8 +373,8 @@ if(pm_support) {
 
 function initial(){
 	show_menu();
-	// http://www.asus.com/support/FAQ/1008718/
-	httpApi.faqURL("faq", "1008718", "https://www.asus.com", "/support/FAQ/");
+	// https://www.asus.com/support/FAQ/1008718/
+	httpApi.faqURL("1008718", function(url){document.getElementById("faq").href=url;});
 
 	if(downsize_4m_support || downsize_8m_support)
 		document.getElementById("guest_image").parentNode.style.display = "none";
@@ -381,14 +395,14 @@ function initial(){
 	}
 
 	var qos_type = document.form.qos_type.value;
-	if(document.form.qos_enable_orig.value == 1){
+	if(qos_enable_orig == "1"){
 		change_qos_type(qos_type);
 
 		document.getElementById('qos_type_tr').style.display = "";
-		if(bwdpi_support){
+		if(adaptiveqos_support){
 			document.getElementById('int_type').style.display = "";
 			document.getElementById('int_type_link').style.display = "";
-			change_qos_type(document.form.qos_type_orig.value);
+			change_qos_type(qos_type_orig);
 		}
 		else
 			show_settings("NonAdaptive");
@@ -397,7 +411,7 @@ function initial(){
 		document.getElementById('settingSelection').style.display = "none";
 		show_up_down(0);
 		document.getElementById('qos_type_tr').style.display = "none";
-		if(bwdpi_support){
+		if(adaptiveqos_support){
 			document.getElementById('int_type').style.display = "";
 			document.getElementById('int_type_link').style.display = "";
 			document.getElementById('bandwidth_setting_tr').style.display = "none";
@@ -405,9 +419,9 @@ function initial(){
 		}
 	}
 
-	if(bwdpi_support){
+	if(adaptiveqos_support){
 		document.getElementById('content_title').innerHTML = "<#menu5_3_2#> - <#Adaptive_QoS_Conf#>";
-		if(document.form.qos_enable.value == 1){
+		if(document.form.qos_enable.value == "1"){
 			if(qos_type == 0){              //Traditional Type
 				add_option(document.getElementById("settingSelection"), '<#qos_user_rules#>', 3, 0);
 				add_option(document.getElementById("settingSelection"), '<#qos_user_prio#>', 4, 0);
@@ -439,8 +453,8 @@ function initial(){
 	}
 
 	/* MODELDEP */
-	if(based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U"){
-		if(document.form.qos_type_orig.value == "1"){
+	if(based_modelid == "RT-AC85U" || based_modelid == "RT-AC85P" || based_modelid == "RT-AC65U"){
+		if(qos_type_orig == "1"){
 			document.getElementById('bandwidth_setting_tr').style.display = "none";
 			document.form.qos_type_radio[1].checked = true;
 		}
@@ -449,12 +463,18 @@ function initial(){
 		document.getElementById('int_type_link').style.display = "none";
 		show_settings("NonAdaptive");
 	}
+	
 
 	if(pm_support) {
 		collect_info();
 		generate_group_list();
 	}
 	init_changeScale();
+
+	if(geforceNow_support){
+		document.getElementById("GeForce_upnp").style.display = "";
+		document.getElementById("GeForceNow_item").style.display = "";
+	}
 
 	if((isFirefox || isOpera) && document.getElementById("FormTitle"))
 		document.getElementById("FormTitle").className = "FormTitle";
@@ -548,61 +568,66 @@ function switchPage(page){
 }
 
 function validForm(){
-
-	if(document.form.qos_enable.value == 0 && document.form.qos_enable_orig.value == 0){
-		return false;
-	}
-
-	if(document.form.qos_enable.value == 1){
-		var qos_type = document.form.qos_type.value;
-		if(qos_type == 1) {
-			if(!reset_wan_to_fo(document.form, 1)) {
+	if(document.form.qos_enable.value == "0" && qos_enable_orig == "0"){
+		if(geforceNow_support){
+			if(document.form.nvgfn_enable.value == orig_nvgfn_enable){
 				return false;
 			}
 		}
+		else{
+			return false;
+		}
+	}
+
+	if(document.form.qos_enable.value == "1"){
+		var qos_type = document.form.qos_type.value;
+		if(qos_type == 1) {
+			if(!reset_wan_to_fo.check_status())
+				return false;
+		}
 		if(qos_type != 2){	//not Bandwidth Limiter
-			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0) && document.form.obw.value.length == 0){	//To check field is empty
+			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && document.form.obw.value.length == 0){	//To check field is empty
 				alert("<#JS_fieldblank#>");
 				document.form.obw.focus();
 				document.form.obw.select();
 				return false;
 			}
-			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0) && document.form.obw.value == 0){		// To check field is 0 && Traditional QoS
+			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && document.form.obw.value == 0){		// To check field is 0 && Traditional QoS
 				alert("Upload Bandwidth can not be 0");	/* untranslated */
 				document.form.obw.focus();
 				document.form.obw.select();
 				return false;
 
 			}
-			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0) && document.form.obw.value.split(".").length > 2){		//To check more than two point symbol
+			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && document.form.obw.value.split(".").length > 2){		//To check more than two point symbol
 				alert("The format of field of upload bandwidth is invalid"); /* untranslated */
 				document.form.obw.focus();
 				document.form.obw.select();
 				return false;
 			}
-			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0) && !validator.rangeFloat(document.form.obw, 0, 9999999999, "")){
+			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && !validator.rangeFloat(document.form.obw, 0, 9999999999, "")){
 				return false;
 			}
 
-			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0) && document.form.ibw.value.length == 0){
+			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && document.form.ibw.value.length == 0){
 				alert("<#JS_fieldblank#>");
 				document.form.ibw.focus();
 				document.form.ibw.select();
 				return false;
 			}
-			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0) && document.form.ibw.value == 0){		// To check field is 0 && Traditional QoS
+			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && document.form.ibw.value == 0){		// To check field is 0 && Traditional QoS
 				alert("Download Bandwidth can not be 0");	/* untranslated */
 				document.form.ibw.focus();
 				document.form.ibw.select();
 				return false;
 			}
-			if(((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0) && document.form.ibw.value.split(".").length > 2){
+			if(((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && document.form.ibw.value.split(".").length > 2){
 				alert("The format of field of download bandwidth is invalid");	/* untranslated */
 				document.form.ibw.focus();
 				document.form.ibw.select();
 				return false;
 			}
-			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0) && !validator.rangeFloat(document.form.ibw, 0, 9999999999, "")){
+			if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && !validator.rangeFloat(document.form.ibw, 0, 9999999999, "")){
 				return false;
 			}
 
@@ -646,6 +671,7 @@ function validForm(){
 				return false;
 			}
 
+			document.form.qos_bw_rulelist.disabled = false;
 			document.form.qos_bw_rulelist.value = qos_bw_rulelist;
 		}
 	}
@@ -653,12 +679,44 @@ function validForm(){
 	return true;
 }
 
+function determineActionScript(){
+	if(geforceNow_support && document.form.qos_enable.value == "0" && qos_enable_orig == "0" &&
+		(document.form.nvgfn_enable.value != orig_nvgfn_enable)){
+		document.form.action_script.value = "restart_upnp;";
+	}
+	else if( lantiq_support || Rawifi_support || (ctf_disable == "1" || ctf_disable_force == "1") ||  //BULECAVE; MTK Models; HW NAT OFF
+			 (qos_enable_orig == "1" && document.form.qos_enable.value == "0") ||   //qos enable => disable
+			 ((qos_enable_orig == document.form.qos_enable.value) && 				//qos_enable and qos_type no change
+		 	  (qos_type_orig == document.form.qos_type.value)) ){
+		document.form.action_script.value = "restart_qos;restart_firewall;";
+		document.form.action_wait.value = "15";
+	}
+	else if(document.form.qos_enable.value == "1" && document.form.qos_type.value == "1" && (ctf_fa_mode != "2" || qca_support)){
+		//BCM: Support FA but disable FA ,or not support FA. QCA Models
+		document.form.action_script.value = "restart_qos;restart_firewall;";
+		document.form.action_wait.value = "15";
+	}
+	else if(document.form.qos_enable.value == "1" && document.form.qos_type.value == "1" && (fc_disable  != "" && runner_disable != "")){ //HND Router
+		document.form.action_script.value = "restart_qos;restart_firewall;";
+		document.form.action_wait.value = "15";
+	}
+	else{
+		document.form.action_script.value = "reboot";
+		document.form.action_wait.value = "<% get_default_reboot_time(); %>";
+	}
+
+	if((qos_type_orig != document.form.qos_type.value) && document.form.qos_type.value == "0")
+		document.form.next_page.value = "Advanced_QOSUserRules_Content.asp";
+}
+
 function submitQoS(){
 
 	if(validForm()){
 
 		if(document.form.qos_enable.value == 1 && document.form.qos_type.value == 1 && document.form.TM_EULA.value == 0){
-			show_tm_eula();
+			ASUS_EULA
+				.config(eula_confirm, cancel)
+				.show("tm")
 		}
 		else{
 			document.form.qos_atm.value = (document.form.qos_atm_x.checked ? 1 : 0);
@@ -674,11 +732,19 @@ function submitQoS(){
 					if(document.form.qos_type.value == 0 && !lantiq_support){
 						FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
 					}
-					else{				
+					else{
+						if(document.form.qos_type.value == 0 && lantiq_support){
+							var hwnatPrompt = "NAT traffic will be processed by CPU if traditional QoS is enabled. Are you sure want to enable?";
+							if(!confirm(hwnatPrompt)) return false;
+						}
+
 						document.form.action_script.value = "restart_qos;restart_firewall";
 					}
 				}
 			}
+
+			if(reset_wan_to_fo.change_status)
+				reset_wan_to_fo.change_wan_mode(document.form);
 
 			showLoading();
 			document.form.submit();
@@ -690,13 +756,15 @@ function submitQoS(){
 
 function change_qos_type(value){
 	/* MODELDEP */
-	if(value=="1" && (based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U")){	//Force change to 0
+	if(value=="1" && (based_modelid == "RT-AC85U" || based_modelid == "RT-AC85P" || based_modelid == "RT-AC65U")){	//Force change to 0
 		value = 0;
 	}
 	if(value == 0){		//Traditional QoS
 		document.getElementById('int_type').checked = false;
 		document.getElementById('trad_type').checked = true;
 		document.getElementById('bw_limit_type').checked = false;
+		if(geforceNow_support)
+			document.getElementById('GeForce_type').checked = false;
 		document.getElementById('bandwidth_setting_tr').style.display = "none";
 		show_up_down(1);
 		document.getElementById('list_table').style.display = "none";
@@ -704,13 +772,13 @@ function change_qos_type(value){
 			document.getElementById('qos_sched_tr').style.display = "";
 			document.getElementById('qos_overhead_tr').style.display = "";
 		}
-		document.form.qos_bw_rulelist.disabled = true;
 		if(document.form.qos_type_orig.value == 0 && document.form.qos_enable_orig.value != 0){
 			document.form.action_script.value = "restart_qos;restart_firewall";
 		}
 		else{
 			document.form.action_script.value = "reboot";
 			document.form.next_page.value = "Advanced_QOSUserRules_Content.asp";
+			document.form.action_wait.value = "<% get_default_reboot_time(); %>";
 		}
 		show_settings("NonAdaptive");
 	}
@@ -719,12 +787,20 @@ function change_qos_type(value){
 		document.getElementById('trad_type').checked = false;
 		document.getElementById('bw_limit_type').checked = false;
 		document.getElementById('bandwidth_setting_tr').style.display = "";
+		if(geforceNow_support)
+			document.getElementById('GeForce_type').checked = false;
 		document.getElementById('list_table').style.display = "none";
 		if (codel_support) {
 			document.getElementById('qos_sched_tr').style.display = "";
 			change_scheduler(document.form.qos_sched.value);
 		}
-		document.form.qos_bw_rulelist.disabled = true;
+		if(document.form.qos_type_orig.value == 1 && document.form.qos_enable_orig.value != 0)
+			document.form.action_script.value = "restart_qos;restart_firewall";
+		else{
+			document.form.action_script.value = "reboot";
+			document.form.next_page.value = "QoS_EZQoS.asp";
+			document.form.action_wait.value = "<% get_default_reboot_time(); %>";
+		}
 		if(document.getElementById("auto").checked){
 			show_up_down(0);
 		}
@@ -732,19 +808,14 @@ function change_qos_type(value){
 			show_up_down(1);
 		}
 
-		if(document.form.qos_type_orig.value == 1 && document.form.qos_enable_orig.value != 0)
-			document.form.action_script.value = "restart_qos;restart_firewall";
-		else{
-			document.form.action_script.value = "reboot";
-			document.form.next_page.value = "QoS_EZQoS.asp";
-		}
-
 		show_settings("Adaptive_quick");
 	}
-	else{		// Bandwidth Limiter
+	else if(value == 2){		// Bandwidth Limiter
 		document.getElementById('int_type').checked = false;
 		document.getElementById('trad_type').checked = false;
 		document.getElementById('bw_limit_type').checked = true;
+		if(geforceNow_support)
+			document.getElementById('GeForce_type').checked = false;
 		document.getElementById('bandwidth_setting_tr').style.display = "none";
 		show_up_down(0);
 		document.getElementById('list_table').style.display = "block";
@@ -752,19 +823,37 @@ function change_qos_type(value){
 			document.getElementById('qos_sched_tr').style.display = "";
 			document.getElementById('qos_overhead_tr').style.display = "";
 		}
-		document.form.qos_bw_rulelist.disabled = false;
 		if(document.form.qos_type_orig.value == 2 && document.form.qos_enable_orig.value != 0)
 			document.form.action_script.value = "restart_qos;restart_firewall";
 		else{
 			document.form.action_script.value = "reboot";
+			document.form.action_wait.value = "<% get_default_reboot_time(); %>";
 		}
-
 		show_settings("NonAdaptive");
 		genMain_table();
 		if(!pm_support)
 			showDropdownClientList('setClientIP', 'name>mac', 'all', 'ClientList_Block_PC', 'pull_arrow', 'all');
 	}
-
+	else if(value == 3) {		// GeforceNow QoS
+		document.getElementById('int_type').checked = false;
+		document.getElementById('trad_type').checked = false;
+		document.getElementById('bw_limit_type').checked = false;
+		document.getElementById('GeForce_type').checked = true;
+		document.getElementById('bandwidth_setting_tr').style.display = "none";
+		show_up_down(1);
+		document.getElementById('list_table').style.display = "none";
+		if(document.form.qos_type_orig.value == 3 && document.form.qos_enable_orig.value != 0)
+			document.form.action_script.value = "restart_qos;restart_firewall";
+		else{
+			document.form.action_script.value = "reboot";
+			document.form.action_wait.value = "<% get_default_reboot_time(); %>";
+		}
+		show_settings("NonAdaptive");
+	}
+	else {
+		alert("no such qos");
+	}
+ 
 	document.form.qos_type.value = value;
 
 	if(value != 2 && GN_with_BandwidthLimeter){
@@ -773,7 +862,7 @@ function change_qos_type(value){
 }
 
 function show_settings(flag){
-	if(!bwdpi_support){
+	if(!adaptiveqos_support){
 		document.getElementById("quick_setup_desc").style.display = "none";
 		document.getElementById("quick_setup_table").style.display = "none";
 	}
@@ -1313,23 +1402,6 @@ function check_field(){
 	}
 }
 
-function show_tm_eula(){
-	$.get("tm_eula.htm", function(data){
-		document.getElementById('agreement_panel').innerHTML= data;
-		var url = "https://www.asus.com/Microsite/networks/Trend_Micro_EULA/";
-		$("#eula_url").attr("href",url);
-		url = "https://www.trendmicro.com/en_us/about/legal/privacy-policy-product.html"
-		$("#tm_eula_url").attr("href",url);
-		url = "https://success.trendmicro.com/data-collection-disclosure";
-		$("#tm_disclosure_url").attr("href",url);
-		adjust_TM_eula_height("agreement_panel");
-	});
-
-	dr_advise();
-	cal_panel_block("agreement_panel", 0.25);
-	$("#agreement_panel").fadeIn(300);
-}
-
 function eula_confirm(){
 	document.form.TM_EULA.value = 1;
 	submitQoS();
@@ -1378,10 +1450,9 @@ function change_scheduler(value){
 
 </script>
 </head>
-<body onload="initial();" id="body_id" onunload="unload_body();" onClick="">
+<body onload="initial();" id="body_id" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
-<div id="agreement_panel" class="eula_panel_container"></div>
 <div id="hiddenMask" class="popup_bg" style="z-index:999;">
 	<table cellpadding="5" cellspacing="0" id="dr_sweet_advise" class="dr_sweet_advise" align="center"></table>
 	<!--[if lte IE 6.5.]><script>alert("<#ALERT_TO_CHANGE_BROWSER#>");</script><![endif]-->
@@ -1420,7 +1491,7 @@ function change_scheduler(value){
 						<div style="margin-left:30px; margin-top:10px;">
 							<div class="formfontdesc" style="line-height:20px;font-size:14px;"><#Adaptive_QoS_desc#></div>
 						</div>
-						<div style="margin:5px;*margin-left:-5px;"><img style="width: 730px; height: 2px;" src="/images/New_ui/export/line_export.png"></div>
+						<div style="margin:5px;*margin-left:-5px;width: 730px; height: 2px;" class="splitLine"></div>
 					</tr>
 					<tr>
 						<td valign="top">
@@ -1466,8 +1537,8 @@ function change_scheduler(value){
 			<input type="hidden" name="next_page" value="QoS_EZQoS.asp">
 			<input type="hidden" name="group_id" value="">
 			<input type="hidden" name="action_mode" value="apply">
-			<input type="hidden" name="action_script" value="">
 			<input type="hidden" name="action_wait" value="15">
+			<input type="hidden" name="action_script" value="">
 			<input type="hidden" name="flag" value="">
 			<input type="hidden" name="TM_EULA" value="<% nvram_get("TM_EULA"); %>">
 			<input type="hidden" name="qos_enable" value="<% nvram_get("qos_enable"); %>">
@@ -1479,7 +1550,7 @@ function change_scheduler(value){
 			<input type="hidden" name="qos_obw1" value="<% nvram_get("qos_obw1"); %>" disabled>
 			<input type="hidden" name="qos_ibw1" value="<% nvram_get("qos_ibw1"); %>" disabled>
 			<input type="hidden" name="bwdpi_app_rulelist" value="<% nvram_get("bwdpi_app_rulelist"); %>" disabled>
-			<input type="hidden" name="qos_bw_rulelist" value="">
+			<input type="hidden" name="qos_bw_rulelist" value="" disabled>
 			<input type="hidden" name="qos_atm" id="qos_atm">
 			<input type="hidden" name="qos_sched" id="qos_sched" value="<% nvram_get("qos_sched"); %>">
 
@@ -1506,7 +1577,9 @@ function change_scheduler(value){
 								</td>
 							</tr>
 							<tr>
-								<td height="5" bgcolor="#4D595D" valign="top"><img src="images/New_ui/export/line_export.png" /></td>
+								<td height="5" bgcolor="#4D595D" valign="top">
+									<div class="splitLine"></div>
+								</td>
 							</tr>
 							<tr>
 								<td height="30" align="left" valign="top" bgcolor="#4D595D">
@@ -1539,6 +1612,13 @@ function change_scheduler(value){
 							<tr>
 								<td valign="top">
 									<table style="margin-left:3px;" width="95%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">
+										<tr id="GeForce_upnp" style="display: none;">
+											<th>Enable GeForce NOW QoS UPnP control</th>
+											<td colspan="2">
+												<input type="radio" name="nvgfn_enable" class="input" value="1" <% nvram_match("nvgfn_enable", "1", "checked"); %>><#checkbox_Yes#>
+												<input type="radio" name="nvgfn_enable" class="input" value="0" <% nvram_match("nvgfn_enable", "0", "checked"); %>><#checkbox_No#>
+											</td>
+										</tr>
 										<tr>
 											<th><#Enable_QoS#></th>
 											<td colspan="2">
@@ -1546,13 +1626,13 @@ function change_scheduler(value){
 													<script type="text/javascript">
 														$('#radio_qos_enable').iphoneSwitch('<% nvram_get("qos_enable"); %>',
 															 function() {
-																document.form.qos_enable.value = 1;
-																if(document.form.qos_enable_orig.value != 1){
+																document.form.qos_enable.value = "1";
+																if(qos_enable_orig != "1"){
 																	if (codel_support) {
 																		document.getElementById('qos_sched_tr').style.display = "";
 																		change_scheduler(document.getElementById('qos_sched').value);
 																	}
-																	if(document.getElementById('int_type').checked == true && bwdpi_support)
+																	if(document.getElementById('int_type').checked == true && adaptiveqos_support)
 																		document.form.next_page.value = "QoS_EZQoS.asp";
 																	else if(document.getElementById('trad_type').checked)		//Traditional QoS
 																		document.form.next_page.value = "Advanced_QOSUserRules_Content.asp";
@@ -1566,13 +1646,13 @@ function change_scheduler(value){
 																}
 
 																document.getElementById('qos_type_tr').style.display = "";
-																if(bwdpi_support){
+																if(adaptiveqos_support){
 																	document.getElementById('qos_enable_hint').style.display = "";
-																	change_qos_type(document.form.qos_type_orig.value);
+																	change_qos_type(qos_type_orig);
 																}
 															 },
 															 function() {
-																document.form.qos_enable.value = 0;
+																document.form.qos_enable.value = "0";
 																show_up_down(0);
 																document.getElementById('qos_type_tr').style.display = "none";
 																document.getElementById('bandwidth_setting_tr').style.display = "none";
@@ -1585,7 +1665,7 @@ function change_scheduler(value){
 																	document.getElementById('qos_sched_tr').style.display = "none";
 																	document.getElementById('qos_overhead_tr').style.display = "none";
 																}
-																if(bwdpi_support){
+																if(adaptiveqos_support){
 
 																	document.getElementById('qos_enable_hint').style.display = "none";
 																	show_settings("NonAdaptive");
@@ -1598,10 +1678,11 @@ function change_scheduler(value){
 										</tr>
 										<tr id="qos_type_tr" style="display:none">
 											<th><#QoS_Type#></th>
-											<td colspan="2">
+											<td colspan="3">
 												<input id="int_type" name="qos_type_radio" value="1" onClick="change_qos_type(this.value);" style="display:none;" type="radio" <% nvram_match("qos_type", "1","checked"); %>><a id="int_type_link" class="hintstyle" style="display:none;" href="javascript:void(0);" onClick="openHint(20, 5);"><label for="int_type"><#Adaptive_QoS#></label></a>
 												<input id="trad_type" name="qos_type_radio" value="0" onClick="change_qos_type(this.value);" type="radio" <% nvram_match("qos_type", "0","checked"); %>><a class="hintstyle" href="javascript:void(0);" onClick="openHint(20, 6);"><label for="trad_type"><#EzQoS_type_traditional#></label></a>
 												<input id="bw_limit_type" name="qos_type_radio" value="2" onClick="change_qos_type(this.value);" type="radio" <% nvram_match("qos_type", "2","checked"); %>><a class="hintstyle" href="javascript:void(0);" onClick="openHint(20, 7)"><label for="bw_limit_type"><#Bandwidth_Limiter#></label></a>
+												<span id="GeForceNow_item" style="display: none;"><input id="GeForce_type" name="qos_type_radio" value="3" onClick="change_qos_type(this.value);" type="radio" <% nvram_match("qos_type", "3","checked"); %>><a class="hintstyle" href="javascript:void(0);"><label for="GeForce_type">GeForce NOW QoS</label></a></span>
 											</td>
 										</tr>
 										<tr id="bandwidth_setting_tr" style="display:none">
@@ -1620,7 +1701,7 @@ function change_scheduler(value){
 											</td>
 										</tr>
 										<tr id="qos_overhead_tr" style="display:none">
-											<th>WAN packet overhead</th>
+											<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50, 28);">WAN packet overhead</a></th>
 											<td colspan="2">
 												<select name="qos_overhead_preset" class="input_option" onchange="set_overhead(this);">
 												</select>

@@ -287,30 +287,6 @@ void usage_exit(const char *cmd, const char *help)
 	exit(1);
 }
 
-#if 0 // replaced by #define in rc.h
-int modprobe(const char *mod)
-{
-#if 1
-	return eval("modprobe", "-s", (char *)mod);
-#else
-	int r = eval("modprobe", "-s", (char *)mod);
-	cprintf("modprobe %s = %d\n", mod, r);
-	return r;
-#endif
-}
-#endif // 0
-
-int modprobe_r(const char *mod)
-{
-#if 1
-	return eval("modprobe", "-r", (char *)mod);
-#else
-	int r = eval("modprobe", "-r", (char *)mod);
-	cprintf("modprobe -r %s = %d\n", mod, r);
-	return r;
-#endif
-}
-
 #ifndef ct_modprobe
 #ifdef LINUX26
 #define ct_modprobe(mod, args...) ({ \
@@ -849,12 +825,28 @@ void setup_pt_conntrack(void)
 	}
 
 #ifdef LINUX26
+#if defined(BRTAC828)
+	if (!nvram_match("fw_pt_sip", "0")) {
+		if (nvram_get_int("fw_pt_sip_mode") == 1) {
+			ct_modprobe_r("sip");
+			ct_modprobe("cisco_sip");
+		} else {
+			ct_modprobe_r("cisco_sip");
+			ct_modprobe("sip");
+		}
+	}
+	else {
+		ct_modprobe_r("sip");
+		ct_modprobe_r("cisco_sip");
+	}
+#else
 	if (nvram_match("fw_pt_sip", "1")) {
 		ct_modprobe("sip");
 	}
 	else {
 		ct_modprobe_r("sip");
 	}
+#endif
 #endif
 }
 
@@ -866,6 +858,9 @@ void remove_conntrack(void)
 	ct_modprobe_r("h323");
 #ifdef LINUX26
 	ct_modprobe_r("sip");
+#if defined(BRTAC828)
+	ct_modprobe_r("cisco_sip");
+#endif
 #endif
 }
 
@@ -1045,20 +1040,14 @@ void killall_tk_period_wait(const char *name, int wait)
 		}
 	}
 }
-void kill_pidfile_tk(const char *pidfile)
+void kill_pid_tk(pid_t pid)
 {
-	FILE *fp;
-	char buf[256];
-	pid_t pid = 0;
 	int n;
 
-	if ((fp = fopen(pidfile, "r")) != NULL) {
-		if (fgets(buf, sizeof(buf), fp) != NULL)
-			pid = strtoul(buf, NULL, 0);
-		fclose(fp);
-	}
+	if (pid <= 1 && pid >= -1)
+		return;
 
-	if (pid > 1 && kill(pid, SIGTERM) == 0) {
+	if (kill(pid, SIGTERM) == 0) {
 		n = 10;
 		while ((kill(pid, 0) == 0) && (n-- > 0)) {
 			_dprintf("%s: waiting pid=%d n=%d\n", __FUNCTION__, pid, n);
@@ -1071,6 +1060,36 @@ void kill_pidfile_tk(const char *pidfile)
 				usleep(100 * 1000);
 			}
 		}
+	}
+}
+
+void kill_pidfile_tk(const char *pidfile)
+{
+	FILE *fp;
+	char buf[256];
+	pid_t pid = 0;
+
+	if ((fp = fopen(pidfile, "r")) != NULL) {
+		if (fgets(buf, sizeof(buf), fp) != NULL)
+			pid = strtoul(buf, NULL, 0);
+		fclose(fp);
+		kill_pid_tk(pid);
+	}
+}
+
+void kill_pidfile_tk_g(const char *pidfile)
+{
+	FILE *fp;
+	char buf[256];
+	pid_t pid = 0;
+	pid_t pgid;
+
+	if ((fp = fopen(pidfile, "r")) != NULL) {
+		if (fgets(buf, sizeof(buf), fp) != NULL)
+			pid = strtoul(buf, NULL, 0);
+		fclose(fp);
+		pgid = getpgid(pid);
+		kill_pid_tk(-pgid);
 	}
 }
 
@@ -1396,80 +1415,6 @@ setup_timezone(void)
 	settimeofday(tvp, &tz);
 }
 
-int
-is_invalid_char_for_hostname(char c)
-{
-	int ret = 0;
-
-	if (c <= 0x2c)				/* SPACE !"#$%&'()*+, */
-		ret = 1;
-	else if (c >= 0x2e && c <= 0x2f)	/* ./ */
-		ret = 1;
-	else if (c >= 0x3a && c <= 0x40)	/* :;<=>?@ */
-		ret = 1;
-#if 0
-	else if (c >= 0x5b && c <= 0x60)	/* [\]^_ */
-		ret = 1;
-#else	/* allow '_' */
-	else if (c >= 0x5b && c <= 0x5e)	/* [\]^ */
-		ret = 1;
-	else if (c == 0x60)			/* ` */
-		ret = 1;
-#endif
-	else if (c >= 0x7b)			/* {|}~ DEL */
-		ret = 1;
-#if 0
-	printf("%c (0x%02x) is %svalid for hostname\n", c, c, (ret == 0) ? "  " : "in");
-#endif
-	return ret;
-}
-
-int
-is_valid_hostname(const char *name)
-{
-	int len, i;
-
-	if (!name)
-		return 0;
-
-	len = strlen(name);
-	for (i = 0; i < len ; i++) {
-		if (is_invalid_char_for_hostname(name[i])) {
-			len = 0;
-			break;
-		}
-	}
-#if 0
-	printf("%s is %svalid for hostname\n", name, len ? "" : "in");
-#endif
-	return len;
-}
-
-int
-is_valid_domainname(const char *name)
-{
-	int len, i;
-	unsigned char c;
-
-	if (!name)
-		return 0;
-
-	len = strlen(name);
-	for (i = 0; i < len; i++) {
-		c = name[i];
-		if (((c | 0x20) < 'a' || (c | 0x20) > 'z') &&
-		    ((c < '0' || c > '9')) &&
-		    (c != '.' && c != '-' && c != '_')) {
-			len = 0;
-			break;
-		}
-	}
-#if 0
-	printf("%s is %svalid for domainname\n", name, len ? "" : "in");
-#endif
-	return len;
-}
-
 int get_meminfo_item(const char *name)
 {
 	FILE *fp;
@@ -1679,3 +1624,38 @@ int rand_seed_by_time(void)
 
 	return rand();
 }
+
+#if defined(RTCONFIG_QCA)
+char *get_wpa_supplicant_pidfile(const char *ifname, char *buf, int size)
+{
+	if(ifname == NULL || buf == NULL || size < 24)
+		return "/var/run/wifi-sta0.pid";
+
+	snprintf(buf, size, "/var/run/wifi-%s.pid", ifname);
+	return buf;
+}
+
+void kill_wifi_wpa_supplicant(int unit)
+{
+	int band, end;
+	char buf[32], *pidfile;
+
+	if (unit > MAX_NR_WL_IF)
+		return;
+	else if (unit < 0) {
+		band = 0;
+		end = MAX_NR_WL_IF;
+	}
+	else {
+		band = end = unit;
+	}
+	for(; band < end; band++) {
+		const char *ifname = get_staifname(band);
+		pidfile = get_wpa_supplicant_pidfile(ifname, buf, sizeof(buf));
+		kill_pidfile_tk(pidfile);
+		unlink(pidfile);
+		doSystem("ifconfig %s down", ifname);
+	}
+}
+#endif	/* RTCONFIG_QCA */
+

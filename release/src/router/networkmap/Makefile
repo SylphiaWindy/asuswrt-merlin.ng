@@ -48,7 +48,7 @@ LDFLAGS += -L$(TOP)/libqcsapi_client_10g -lqcsapi_client
 endif
 
 ifeq ($(RTCONFIG_LANTIQ),y)
-LDFLAGS += -L$(TOP)/fapi_wlan_common-1.0.0.1 -lfapiwlancommon -ldl -L$(TOP)/libhelper-1.4.0.2 -lhelper -L$(TOP)/libfapi-0.1 -lfapi
+LDFLAGS += -L$(TOP)/fapi_wlan_common-05.04.00.131 -lfapiwlancommon -ldl -L$(TOP)/libhelper-1.4.0.2 -lhelper -L$(TOP)/libfapi-0.1 -lfapi
 endif
 
 ifeq ($(RTCONFIG_BWDPI),y)
@@ -94,6 +94,11 @@ LDFLAGS += -L $(TOP)/sqlCipher/.libs -lsqlcipher
 LDFLAGS += -L$(TOP)/PMS_DBapis -lpms_sql
 endif
 
+ifeq ($(RTCONFIG_CFGSYNC),y)
+CFLAGS += -I$(TOP)/cfg_mnt
+LIBS += -L$(TOP)/cfg_mnt -lcfgmnt
+endif
+
 include $(SRCBASE)/.config
 
 CFLAGS += -DNMP_DB
@@ -102,19 +107,24 @@ ifeq ($(HND_ROUTER),y)
 CFLAGS += -DHND_ROUTER
 endif
 
+ifeq ($(RTCONFIG_QTN),y)
+	QTN = _qtn
+else
+	QTN =
+endif
 ifneq ($(AC2900),y)
 ifeq ($(wildcard $(SRCBASE)/router/networkmap/*.c),)
 all: 
-	-cp -f prebuild$(BCMEX)$(EX7)/networkmap networkmap
-	-cp -f prebuild$(BCMEX)$(EX7)/asusdiscovery asusdiscovery
-	-cp -f prebuild$(BCMEX)$(EX7)/arpstorm arpstorm
+	-cp -f prebuild$(BCMEX)$(EX7)$(QTN)/networkmap networkmap
+	-cp -f prebuild$(BCMEX)$(EX7)$(QTN)/asusdiscovery asusdiscovery
+	-cp -f prebuild$(BCMEX)$(EX7)$(QTN)/arpstorm arpstorm
 else
 all: $(EXEC) asusdiscovery arpstorm
 endif
 else
 ifeq ($(wildcard $(SRCBASE)/router/networkmap/*.c),)
 all: 
-	-cp -f prebuild$(BCMEX)$(EX7)/networkmap networkmap
+	-cp -f prebuild$(BCMEX)$(EX7)$(QTN)/networkmap networkmap
 else
 all: $(EXEC)
 endif

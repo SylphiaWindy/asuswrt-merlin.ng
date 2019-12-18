@@ -28,7 +28,7 @@ var wans_mode ='<% nvram_get("wans_mode"); %>';
 function initial(){
 	show_menu();
 	// https://www.asus.com/support/FAQ/114110/
-	httpApi.faqURL("faq", "114110", "https://www.asus.com", "/support/FAQ/");
+	httpApi.faqURL("114110", function(url){document.getElementById("faq").href=url;});
 	well_known_apps();
 	//parse nvram to array
 	var parseNvramToArray = function() {
@@ -252,7 +252,7 @@ function trigger_validate_duplicate(o, v, l, off){
 </script>
 </head>
 
-<body onload=" initial();" onunLoad="return unload_body();">
+<body onload=" initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 
 <div id="Loading" class="popup_bg"></div>
@@ -293,7 +293,7 @@ function trigger_validate_duplicate(o, v, l, off){
 		<td bgcolor="#4D595D" valign="top"  >
 		<div>&nbsp;</div>
 		<div class="formfonttitle"><#menu5_3#> - <#menu5_3_3#></div>
-		<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+		<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 		<div class="formfontdesc"><#IPConnection_porttrigger_sectiondesc#></div>
 		<div class="formfontdesc" style="margin-top:-10px;">
 			<a id="faq" href="" target="_blank" style="font-family:Lucida Console;text-decoration:underline;"><#menu5_3_3#>&nbspFAQ</a>

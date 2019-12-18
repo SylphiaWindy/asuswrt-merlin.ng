@@ -44,7 +44,7 @@ function initial(){
 		document.getElementById("wl_unit_field").style.display = "none";
 
 	if(((sw_mode == 2 || sw_mode == 4) && '<% nvram_get("wl_unit"); %>' == '<% nvram_get("wlc_band"); %>') ||
-	   (based_modelid == "RT-AD7200" && '<% nvram_get("wl_unit"); %>' == '3')){
+	   (band60g_support && '<% nvram_get("wl_unit"); %>' == '3')){
 		for(var i=4; i>=2; i--)
 			document.getElementById("MainTable1").deleteRow(i);
 		document.getElementById("repeaterModeHint_desc").innerHTML = "<#CTL_nonsupported#>";
@@ -136,7 +136,7 @@ function checkWLReady(){
 </script>
 </head>
 
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 
 <div id="Loading" class="popup_bg"></div>
@@ -177,7 +177,7 @@ function checkWLReady(){
 		  <td bgcolor="#4D595D" valign="top"  >
 		  <div>&nbsp;</div>
 		  <div class="formfonttitle"><#menu5_1#> - <#menu5_1_5#></div>
-		  <div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+		  <div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 		  <div class="formfontdesc"><#WLANAuthentication11a_display1_sectiondesc#></div>
 		  <div id="lantiq_ready" style="display:none;color:#FC0;margin-left:5px;font-size:13px;">Wireless is setting...</div>
 		<table id="MainTable1" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" class="FormTable">

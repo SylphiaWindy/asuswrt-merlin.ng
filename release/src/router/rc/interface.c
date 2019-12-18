@@ -180,30 +180,20 @@ void gen_lan_ports(char *buf, const int sample[SWPORT_COUNT], int index, int ind
 
 int _ifconfig(const char *name, int flags, const char *addr, const char *netmask, const char *dstaddr, int mtu)
 {
-	int s, err;
+	int s, err, postup;
 	struct ifreq ifr;
 	struct in_addr in_addr, in_netmask, in_broadaddr;
 
 #ifdef RTCONFIG_LANTIQ
-	if(strcmp(name, "wlan0") == 0 ||
-		strcmp(name, "wlan2") == 0){
+	/* wlan0-wlan0.2, wlan2-wlan2.2 */
+	if(strncmp(name, "wlan", 4) == 0){
 		if(flags == 0){
-			_dprintf("[%s][%d]skip name:[%s]\n", __func__, __LINE__, name);
+			_dprintf("[%s][%d]skip ifconfig down:[%s]\n",
+				__func__, __LINE__, name);
 			return -1;
 		}
 		if(flags & IFUP){
-			if(strcmp(name, "wlan0") == 0 && (flags & IFUP)){
-				if(nvram_get_int("wl0_radio") == 0){
-					_dprintf("[%s][%d] wl0_radio=0, skip IFUP wlan0\n", __func__, __LINE__);
-					return -1;
-				}
-			}
-			if(strcmp(name, "wlan2") == 0 && (flags & IFUP)){
-				if(nvram_get_int("wl1_radio") == 0){
-					_dprintf("[%s][%d] wl1_radio=0, skip IFUP wlan2\n", __func__, __LINE__);
-					return -1;
-				}
-			}
+			if(skip_ifconfig_up(name) == -1) return -1;
 		}
 	}
 	if(strcmp(name, "eth0_1") == 0 ||
@@ -211,6 +201,10 @@ int _ifconfig(const char *name, int flags, const char *addr, const char *netmask
 		strcmp(name, "eth0_3") == 0 ||
 		strcmp(name, "eth0_4") == 0){
 		set_hwaddr(name, get_lan_hwaddr());
+		if(flags == 0) return -1;
+	}
+	if(strcmp(name, "eth1") == 0){
+		set_hwaddr(name, get_wan_hwaddr());
 		if(flags == 0) return -1;
 	}
 #endif
@@ -227,10 +221,11 @@ int _ifconfig(const char *name, int flags, const char *addr, const char *netmask
 
 	/* Set interface name */
 	strlcpy(ifr.ifr_name, name, IFNAMSIZ);
+	postup = strchr(name, ':') && (flags & IFUP);
 
 	/* Set interface flags */
 	ifr.ifr_flags = flags;
-	if (ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
+	if (!postup && ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
 		goto ERROR;
 
 	/* Set IP address */
@@ -265,6 +260,11 @@ int _ifconfig(const char *name, int flags, const char *addr, const char *netmask
 		if (ioctl(s, SIOCSIFDSTADDR, &ifr) < 0)
 			goto ERROR;
 	}
+
+	/* Set interface flags */
+	ifr.ifr_flags = flags;
+	if (postup && ioctl(s, SIOCSIFFLAGS, &ifr) < 0)
+		goto ERROR;
 
 	/* Set MTU */
 	if (mtu > 0) {
@@ -368,11 +368,11 @@ static int route_manip(int cmd, char *name, int metric, char *dst, char *gateway
 
 	/* Fill in rtentry */
 	memset(&rt, 0, sizeof(rt));
-	if (dst && *dst)
+	if (dst)
 		inet_aton(dst, &sin_addr(&rt.rt_dst));
-	if (gateway && *gateway)
+	if (gateway)
 		inet_aton(gateway, &sin_addr(&rt.rt_gateway));
-	if (genmask && *genmask)
+	if (genmask)
 		inet_aton(genmask, &sin_addr(&rt.rt_genmask));
 	rt.rt_metric = metric;
 	rt.rt_flags = RTF_UP;
@@ -412,6 +412,9 @@ void config_loopback(void)
 {
 	/* Bring up loopback interface */
 	ifconfig("lo", IFUP, "127.0.0.1", "255.0.0.0");
+#ifdef RTCONFIG_DNSPRIVACY
+	ifconfig("lo:0", IFUP, "127.0.1.1", "255.0.0.0");
+#endif
 
 	/* Add to routing table */
 	route_add("lo", 0, "127.0.0.0", "0.0.0.0", "255.0.0.0");
@@ -605,29 +608,9 @@ int start_vlan(void)
 #if (defined(RTCONFIG_QCA) || (defined(RTCONFIG_RALINK) && (defined(RTCONFIG_RALINK_MT7620) || defined(RTCONFIG_RALINK_MT7621))))
 	if(!nvram_match("switch_wantag", "none")&&!nvram_match("switch_wantag", "")&&!nvram_match("switch_wantag", "hinet"))
 	{
-#if defined(RTCONFIG_QCA)
-#if defined(RTCONFIG_SWITCH_RTL8370MB_PHY_QCA8033_X2)
-		char *wan_base_if = "eth1";	/* lan_1, WAN interface if IPTV is enabled. */
-#else
-		char *wan_base_if = "eth0";
-#endif
-#if defined(RTCONFIG_DETWAN)
-		char buf[32];
-		char *detwan_ifname;
+		char wan_base_if[IFNAMSIZ] = "";
 
-		if((detwan_ifname = nvram_get("detwan_ifname")) != NULL) {
-			strncpy(buf, detwan_ifname, sizeof(buf)-1);
-			buf[sizeof(buf)-1] = '\0';
-			wan_base_if = buf;
-		}
-#endif	/* RTCONFIG_DETWAN */
-#elif defined(RTCONFIG_RALINK)
-#if defined(RTCONFIG_RALINK_MT7620) /* RT-N14U, RT-AC52U, RT-AC51U, RT-N11P, RT-N54U, RT-AC1200HP, RT-AC54U */
-		char *wan_base_if = "eth2";
-#elif defined(RTCONFIG_RALINK_MT7621) /* RT-N56UB1, RT-N56UB2 */
-		char *wan_base_if = "eth3";
-#endif
-#endif
+		strlcpy(wan_base_if, get_wan_base_if(), sizeof(wan_base_if));
 		set_wan_tag(wan_base_if);
 	}
 #endif
@@ -658,13 +641,27 @@ int start_vlan(void)
 #endif
 
 #if defined(HND_ROUTER)
-	if(!nvram_match("switch_wantag", "") && (nvram_get_int("switch_stb_x") > 0 || nvram_match("switch_wantag", "unifi_biz") || nvram_match("switch_wantag", "stuff_fibre") || nvram_match("switch_wantag", "manual"))) {
+	if(!nvram_match("switch_wantag", "") && (nvram_get_int("switch_stb_x") > 0 || nvram_match("switch_wantag", "unifi_biz") || 
+		nvram_match("switch_wantag", "stuff_fibre") || nvram_match("switch_wantag", "spark") ||
+		nvram_match("switch_wantag", "2degrees") || nvram_match("switch_wantag", "slingshot") ||
+		nvram_match("switch_wantag", "orcon") || nvram_match("switch_wantag", "voda_nz") ||
+		nvram_match("switch_wantag", "tpg") || nvram_match("switch_wantag", "iinet") ||
+		nvram_match("switch_wantag", "aapt") || nvram_match("switch_wantag", "intronode") ||
+		nvram_match("switch_wantag", "amaysim") || nvram_match("switch_wantag", "dodo") ||
+		nvram_match("switch_wantag", "iprimus") || nvram_match("switch_wantag", "manual"))) {
 		char *wan_base_if = "eth0";
 		ifconfig(wan_base_if, IFUP, NULL, NULL);
 		set_wan_tag(wan_base_if);
 	}
 #elif defined(BLUECAVE)
-	if(!nvram_match("switch_wantag", "") && (nvram_get_int("switch_stb_x") > 0 || nvram_match("switch_wantag", "unifi_biz") || nvram_match("switch_wantag", "stuff_fibre") || nvram_match("switch_wantag", "manual"))) {
+	if(!nvram_match("switch_wantag", "") && (nvram_get_int("switch_stb_x") > 0 || nvram_match("switch_wantag", "unifi_biz") || 
+		nvram_match("switch_wantag", "stuff_fibre") || nvram_match("switch_wantag", "spark") ||
+		nvram_match("switch_wantag", "2degrees") || nvram_match("switch_wantag", "slingshot") ||
+		nvram_match("switch_wantag", "orcon") || nvram_match("switch_wantag", "voda_nz") ||
+		nvram_match("switch_wantag", "tpg") || nvram_match("switch_wantag", "iinet") ||
+		nvram_match("switch_wantag", "aapt") || nvram_match("switch_wantag", "intronode") ||
+		nvram_match("switch_wantag", "amaysim") || nvram_match("switch_wantag", "dodo") ||
+		nvram_match("switch_wantag", "iprimus") || nvram_match("switch_wantag", "manual"))) {
 		char *wan_base_if = "eth1";
 		ifconfig(wan_base_if, IFUP, NULL, NULL);
 		set_wan_tag(wan_base_if);

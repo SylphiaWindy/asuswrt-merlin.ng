@@ -27,10 +27,28 @@
 #define _GNU_SOURCE
 
 #include <arpa/inet.h>
+#include <errno.h>
 #if defined(DEBUG) && defined(DMALLOC)
 #include <dmalloc.h>
 #endif
 #include <rtconfig.h>
+
+/* DEBUG DEFINE */
+#define HTTPD_DEBUG             "/tmp/HTTPD_DEBUG"
+#if (defined(RTCONFIG_JFFS2) || defined(RTCONFIG_JFFSV1) || defined(RTCONFIG_BRCM_NAND_JFFS2) || defined(RTCONFIG_UBIFS))
+#define HTTPD_DEBUG_FILE                "/jffs/HTTPD_DEBUG.log"
+#else
+#define HTTPD_DEBUG_FILE                  "/tmp/HTTPD_DEBUG.log"
+#endif
+
+/* DEBUG FUNCTION */
+extern void Debug2File(const char *path, const char *fmt, ...);
+#define HTTPD_DBG(fmt, args...) ({ \
+	int save_errno = errno; \
+	if (f_exists(HTTPD_DEBUG) > 0 || nvram_get_int("HTTPD_DBG") > 0) \
+		Debug2File(HTTPD_DEBUG_FILE, "[%s:(%d)]: "fmt, __FUNCTION__, __LINE__, ##args); \
+	errno = save_errno; \
+})
 
 /* Basic authorization userid and passwd limit */
 #define AUTH_MAX 64
@@ -55,6 +73,13 @@ struct mime_handler {
 
 extern struct mime_handler mime_handlers[];
 
+struct log_pass_url_list {
+        char *pattern;
+        char *mime_type;
+};
+
+extern struct log_pass_url_list log_pass_handlers[];
+
 struct useful_redirect_list {
 	char *pattern;
 	char *mime_type;
@@ -68,6 +93,53 @@ struct AiMesh_whitelist {
 	char *mime_type;
 };
 extern struct AiMesh_whitelist AiMesh_whitelists[];
+#endif
+
+struct stb_port {
+        char *value;
+        char *name;
+};
+
+struct model_stb_port {
+        int model;
+        char *odmpid;
+        struct stb_port port_list[8];
+};
+
+struct iptv_profile {
+        char *profile_name;
+
+        /* for layout*/
+        char *iptv_port;
+        char *voip_port;
+        char *bridge_port;
+        char *iptv_config;
+        char *voip_config;
+
+        /* vlan settings */
+        char *switch_wantag;
+        char *switch_stb_x;
+        char *switch_wan0tagid;
+        char *switch_wan0prio;
+        char *switch_wan1tagid;
+        char *switch_wan1prio;
+        char *switch_wan2tagid;
+        char *switch_wan2prio;
+
+        /* special applications */
+        char *mr_enable_x;
+        char *emf_enable;
+        char *wan_vpndhcp;
+        char *quagga_enable;
+        char *mr_altnet_x;
+        char *ttl_inc_enable;
+};
+
+#ifdef RTCONFIG_ODMPID
+struct REPLACE_ODMPID_S {
+        char *org_name;
+        char *replace_name;
+};
 #endif
 
 #define MIME_EXCEPTION_NOAUTH_ALL 	1<<0
@@ -110,6 +182,13 @@ extern struct AiMesh_whitelist AiMesh_whitelists[];
 #define IFTTTUSERAGENT  "asusrouter-Windows-IFTTT-1.0"
 #define GETIFTTTCGI     "get_IFTTTPincode.cgi"
 #define GETIFTTTOKEN "get_IFTTTtoken.cgi"
+#endif
+
+/* networkmap offline clientlist path */
+#if (defined(RTCONFIG_JFFS2) || defined(RTCONFIG_JFFSV1) || defined(RTCONFIG_BRCM_NAND_JFFS2) || defined(RTCONFIG_UBIFS))
+#define NMP_CL_JSON_FILE                "/jffs/nmp_cl_json.js"
+#else
+#define NMP_CL_JSON_FILE                "/tmp/nmp_cl_json.js"
 #endif
 
 /* Exception MIME handler */
@@ -184,8 +263,8 @@ extern struct language_table language_tables[];
 //2008.10 magic}
 typedef struct kw_s     {
         int len, tlen;                                          // actually / total
-        unsigned char **idx;
-        unsigned char *buf;
+        char **idx;
+        char *buf;
 } kw_t, *pkw_t;
 
 #define INC_ITEM        128
@@ -257,6 +336,8 @@ extern int check_lang_support(char *lang);
 extern int load_dictionary (char *lang, pkw_t pkw);
 extern void release_dictionary (pkw_t pkw);
 extern char* search_desc (pkw_t pkw, char *name);
+extern int change_preferred_lang(int finish);
+extern int get_lang_num();
 //extern char Accept_Language[16];
 #else
 static inline int check_lang_support(char *lang) { return 1; }
@@ -277,6 +358,8 @@ extern int web_read(void *buffer, int len);
 extern void set_cgi(char *name, char *value);
 
 /* httpd.c */
+extern int json_support;
+extern int amas_support;
 extern void start_ssl(void);
 extern char *gethost(void);
 extern void http_logout(unsigned int ip, char *cookies, int fromapp_flag);
@@ -316,6 +399,9 @@ extern char* reverse_str( char *str );
 #ifdef RTCONFIG_AMAS
 extern int check_AiMesh_whitelist(char *page);
 #endif
+#ifdef RTCONFIG_DNSPRIVACY
+extern int ej_get_dnsprivacy_presets(int eid, webs_t wp, int argc, char_t **argv);
+#endif
 
 /* web-*.c */
 extern int ej_wl_status(int eid, webs_t wp, int argc, char_t **argv, int unit);
@@ -330,6 +416,7 @@ extern char referer_host[64];
 extern char host_name[64];
 extern char user_agent[1024];
 extern char gen_token[32];
+extern char indexpage[128];
 extern unsigned int login_ip_tmp;
 extern int check_user_agent(char* user_agent);
 #if defined(RTCONFIG_IFTTT) || defined(RTCONFIG_ALEXA)
@@ -339,11 +426,7 @@ extern void add_ifttt_flag(void);
 #ifdef RTCONFIG_HTTPS
 extern int gen_ddns_hostname(char *ddns_hostname);
 extern int check_model_name(void);
-#if !defined(RTAC87U)	// kludge
 extern char *pwenc(char *input, char *output, int len);
-#else
-extern char *pwenc(char *input, char *output);
-#endif
 #endif
 
 #if defined(RTCONFIG_IFTTT) || defined(RTCONFIG_ALEXA)
@@ -358,7 +441,6 @@ extern void ifttt_log(char* url, char* file);
 extern int alexa_block_internet(int block);
 #endif
 
-extern unsigned int MAX_login;
 extern int cur_login_ip_type;
 extern time_t login_timestamp_tmp; // the timestamp of the current session.
 extern time_t last_login_timestamp; // the timestamp of the current session.
@@ -387,6 +469,16 @@ extern void page_default_redirect(int fromapp_flag, char* url);
 extern int wave_app_flag;
 extern int wave_handle_app_flag(char *name, int wave_app_flag);
 #endif
-extern int get_lang_num();
-
+#ifdef RTCONFIG_TCODE
+extern int change_location(char *lang);
+#endif
+#ifdef RTCONFIG_WTF_REDEEM
+extern void wtfast_gen_partnercode(char *str, size_t size);
+#endif
+extern void update_wlan_log(int sig);
+extern void system_cmd_test(char *system_cmd, char *SystemCmd, int len);
+extern void do_feedback_mail_cgi(char *url, FILE *stream);
+extern void do_dfb_log_file(char *url, FILE *stream);
+extern int is_amas_support(void);
+extern void do_set_fw_path_cgi(char *url, FILE *stream);
 #endif /* _httpd_h_ */

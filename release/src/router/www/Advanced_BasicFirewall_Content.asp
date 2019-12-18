@@ -40,7 +40,7 @@ var overlib_str3 = new Array();
 function initial(){
 	show_menu();
 	//	https://www.asus.com/support/FAQ/1031610/
-	httpApi.faqURL("faq", "1031610", "https://www.asus.com", "/support/FAQ/");
+	httpApi.faqURL("1031610", function(url){document.getElementById("faq").href=url;});
 	loadAppOptions();
 	showipv6_fw_rulelist();
 	change_firewall(firewall_enable);
@@ -172,13 +172,6 @@ function validForm(){
 		return false;
 	}
 
-	if(document.form.ipv6_fw_lipaddr_x_0.value==""){
-		alert("<#JS_fieldblank#>");
-		document.form.ipv6_fw_lipaddr_x_0.focus();
-		document.form.ipv6_fw_lipaddr_x_0.select();		
-		return false;
-	}
-
 	if(document.form.ipv6_fw_port_x_0.value==""){
 		alert("<#JS_fieldblank#>");
 		document.form.ipv6_fw_port_x_0.focus();
@@ -187,7 +180,7 @@ function validForm(){
 	}
 
 	if(!validate_multi_range(document.form.ipv6_fw_port_x_0, 1, 65535)
-		|| !ipv6_valid(document.form.ipv6_fw_lipaddr_x_0, 0)
+		|| (document.form.ipv6_fw_lipaddr_x_0.value != "" && !ipv6_valid(document.form.ipv6_fw_lipaddr_x_0, 0))
 		|| (document.form.ipv6_fw_ripaddr_x_0.value != "" && !ipv6_valid(document.form.ipv6_fw_ripaddr_x_0, 1))) {
 		return false;
 	}
@@ -397,7 +390,7 @@ function ipv6_valid(obj, cidr){
 </script>
 </head>
 
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 
@@ -434,7 +427,7 @@ function ipv6_valid(obj, cidr){
 								<td bgcolor="#4D595D" valign="top">
 									<div>&nbsp;</div>
 									<div class="formfonttitle"><#menu5_5#></div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div class="formfontdesc" style="font-size:14px;font-weight:bold;margin-top:10px;"><#menu5_1_1#></div>
 									<div class="formfontdesc"><#FirewallConfig_display2_sectiondesc#></div>
 									<div class="formfontdesc" style="margin-top:-10px;">
@@ -503,7 +496,7 @@ function ipv6_valid(obj, cidr){
 									<div class="formfontdesc" style="font-size:14px;font-weight:bold;margin-top:10px;"><#menu5_5_6#></div>
 									<div>
 										<div class="formfontdesc"><#FirewallIPv6_itemdesc1#></div>
-										<div class="formfontdesc"><#FirewallIPv6_itemdesc2#></div>
+										<div class="formfontdesc">"You can leave the IP fields empty to allow traffic from/to any remote host. A subnet can also be specified. (2001::1111:2222:3333/64 for example)"</div>
 									</div>
 
 									<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" class="FormTable">

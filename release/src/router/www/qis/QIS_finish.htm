@@ -10,7 +10,7 @@ span{
 	border:0px solid #FFFFFF;
 	color:#FFFFFF;
 	font-size:12px;
-	font-family:Arial, Helvetica, sans-serif;
+	font-family: Arial, Helvetica, MS UI Gothic, MS P Gothic, sans-serif;
 	/*width:27px;*/
 	text-align:right;
 	margin:0px auto;
@@ -26,6 +26,7 @@ span{
 <script type="text/javascript" src="/qis/QISMobilePlugin.js"></script>
 <script type="text/JavaScript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="/help.js"></script>
+<script type="text/javascript" src="/js/httpApi.js"></script>
 <script>
 /*
 	# restart needed service after loading this page immediately by restartService();
@@ -206,17 +207,8 @@ if(parent.yadns_support){
 	var yadns_mode = '<% nvram_get("yadns_mode"); %>';
 }
 
-var get_protocol = function() {
-	var protocol = "http:";
-	if(window.location.protocol == "http:" || window.location.protocol == "https:") {
-		protocol = window.location.protocol;
-		return protocol;
-	}
-
-	return protocol;
-};
 var header_info = [<% get_header_info(); %>];
-var location_org = get_protocol() + "//" + header_info[0].host;
+var location_org = header_info[0].protocol + "://" + header_info.host + ":" + header_info.port;
 
 var isWLclient = function(){  //detect login client is by wireless or wired
 	<% login_state_hook(); %>
@@ -246,18 +238,6 @@ function yadns_change(need_apply){
 	yadns_update.submit();
 }
 
-var get_protocol = function() {
-	var protocol = "http:";
-	if(window.location.protocol == "http:" || window.location.protocol == "https:") {
-		protocol = window.location.protocol;
-		return protocol;
-	}
-
-	return protocol;
-};
-var header_info = [<% get_header_info(); %>];
-var location_org = get_protocol() + "//" + header_info[0].host;
-
 /* Live update */
 function doLiveUpdate(_do){
 	if(_do){
@@ -275,6 +255,9 @@ function doLiveUpdate(_do){
 
 function showCancel(){
 	document.getElementById("newFWCancel").style.display = "";
+	if(parent.new_FW_type==2){
+		document.getElementById("newFWCancelDesc").innerHTML = "<#exist_new_force#>";
+	}
  	document.getElementById("newFWDetected").style.display = "none";
 }
 
@@ -301,7 +284,7 @@ function detect_httpd(){
 				progressBar = 100;
 				document.getElementById('progress_bar_no').innerHTML = "100%";
 				document.getElementById("updateProgress").style.width = "100%";
-				document.getElementById("liveUpdateResult").innerHTML = "<#connect_failed#>";
+				document.getElementById("liveUpdateResult").innerHTML = "<#info_failed#>";
 				document.getElementById("newFWgraded").style.display = "";
 				return false;
 			}else if(webs_state_error == "2"){
@@ -455,11 +438,11 @@ function checkIsNewFirmware(){
 
 		document.getElementById("QISmain").style.display = "none";
 		document.getElementById("liveUpdate_div").style.display = "";
-
-		//force_upgrade_support : rc_support with "fupgrade"
-		if(!parent.is_CN && parent.force_upgrade_support){
-			doLiveUpdate(true);
+		if(parent.new_FW_type==2){
+			document.getElementById("liveUpdate_div_leftbutton").value = "<#CTL_UpgradeNight#>";
+			document.getElementById("liveUpdate_div_rightbutton").value = "<#CTL_UpgradeNow#>";
 		}
+
 	}
 	else{
 		if(parent.sysReboot || isWLclient())
@@ -586,7 +569,9 @@ function QKfinish_load_body(){
 	var shown_str;
 
 	// disable click button for low-end HW SPEC
-	if(document.restartForm.productid.value == "RT-AC51U+"){
+	if(document.restartForm.productid.value == "RT-AC51U+"
+	|| document.restartForm.productid.value == "RT-ACRH26"
+	|| document.restartForm.productid.value == "RT-AC85P"){
 		$("#nextButton").hide();
 		$("#loadingIcon").show();
 
@@ -596,14 +581,14 @@ function QKfinish_load_body(){
 		}, 6000);
 	}
 
-	/* MODELDEP */
-	if(document.restartForm.productid.value == "AC2900"){	//MODELDEP: AC2900(RT-AC86U)
-		$("#main_manual")[0].style.display = "none";
-	}
-
 	parent.detect_firmware();
 	document.getElementById("QISmain").style.display = "";
 	parent.document.title = "<#Web_Title#> - <#QKSet_all_title#>";
+
+	var linkInternet = httpApi.isConnected();
+	if(linkInternet){
+		document.getElementById("main_manual").style.display = "";
+	}
 
 	if(gobi_support){
 		$("#freqtitle2")[0].style.display = "none";
@@ -1381,6 +1366,10 @@ function QKfinish_load_body(){
 		if(parent.new_FW){
 			document.getElementById("mainDiv_finish").style.display = "none";
 			document.getElementById("liveUpdate_div").style.display = "";
+			if(parent.new_FW_type==2){
+				document.getElementById("liveUpdate_div_leftbutton").value = "<#CTL_UpgradeNight#>";
+				document.getElementById("liveUpdate_div_rightbutton").value = "<#CTL_UpgradeNow#>";
+			}
 			document.getElementById("liveUpdateTitle").style.display = "none";
 			$("#currentFW")[0].innerHTML = parent.exist_firmver + "_" + parent.current_buildno + "_" + parent.current_extendno;
 			$("#latestFW")[0].innerHTML = "" 
@@ -1399,9 +1388,14 @@ function QKfinish_load_body(){
 	else{
 		parent.set_step("t3");
 		parent.document.getElementById("LoadingBar").style.visibility = 'hidden';
+		if(parent.gobi_support){
+			document.getElementById("timeObject").style.display = "none";
+			document.getElementById('svc_hint_div').style.display = "none";
+		}
 	}
 
 	if(!isWLclient() && !parent.sysReboot) setTimeout(function(){
+		if(parent.isFirst) parent.restartWireless = true;
 		restartService();
 	}, 1000);
 }
@@ -1419,6 +1413,7 @@ var startQuery = function(){
 		}
 	});
 };
+
 </script>
 </head>
 
@@ -1448,13 +1443,13 @@ var startQuery = function(){
 				<td align="left">
 					<div class="description_down"><#qis_finish_title1#></div>
 				</td>
-				<td align="right">
-					<!--img onclick="parent.gotoIndex();" style="cursor:pointer;" align="right" title="Go to Home" src="/images/backtohome.png" onMouseOver="this.src='/images/backtohomeclick.png'" onMouseOut="this.src='/images/backtohome.png'"-->
-				</td>
+				<td align="right"></td>
 			</tr>
 		</table>
 	</div>
-	<div style="margin:5px;" id="splitLine"><img style="width: 720px; *width: 710px; height: 2px;" src="/images/New_ui/export/line_export.png"></div>
+	<div style="margin:5px;" id="splitLine">
+		<div style="width: 720px; *width: 710px; height: 2px;" class="splitLine"></div>
+	</div>
 
 <p id="timeObject" class="QISGeneralFont"><#General_x_SystemTime_itemname#>: <span id="system_time" size="40" class="devicepin" style="font-size:12px;"></span>&nbsp&nbsp<span id="change_tz" style="font-family:Lucida Console;"></span>&nbsp<span id="dstzone" style="display:none;"></span></p>
 <div id="svc_hint_div" style="margin-left:70px;display:none;"><span style="color:#FFCC00;"><#General_x_SystemTime_syncNTP#></span></div>
@@ -1659,7 +1654,7 @@ var startQuery = function(){
 	<div class="itemTitle"><#menu5_2#></div>
 	<fieldset>
 		<div class="row">
-			<label><#LAN IP#></label>
+			<label><#LAN_IP#></label>
 			<div id="lanip_m"></div>
 		</div>
 		<div class="row_end">
@@ -1684,8 +1679,10 @@ var startQuery = function(){
 </div>
 
 <div id="AreaHint" style="margin-top:10px; margin-left:5px;">
-	<div><img style="width: 720px; *width: 710px; height: 2px;" src="/images/New_ui/export/line_export.png"></div>
-	<div id="main_manual" style="padding-left:20px;margin-top:10px">
+	<div>
+		<div style="width: 720px; *width: 710px; height: 2px;" class="splitLine"></div>
+	</div>
+	<div id="main_manual" style="padding-left:20px;margin-top:10px;display:none;">
 		<span><#ASUS_Registration#></span>
 	</div>	
 </div>
@@ -1704,7 +1701,9 @@ var startQuery = function(){
 				</tr>
 			</table>
 		</div>
-		<div style="margin:5px;"><img style="width: 720px; *width: 710px; height: 2px;" src="/images/New_ui/export/line_export.png"></div>
+		<div style="margin:5px;">
+			<div style="width: 720px; *width: 710px; height: 2px;" class="splitLine"></div>
+		</div>
 		<br>
 		<br>
 	</div>
@@ -1724,8 +1723,8 @@ var startQuery = function(){
 		<br>
 		<br>
 		<div class="apply_gen" style="margin-top:5px">
-			<input type="button" value="<#CTL_Cancel#>" onclick="showCancel();" class="button_gen">
-			<input type="button" value="<#checkbox_Yes#>" onclick="doLiveUpdate(true);" class="button_gen">
+			<input type="button" id="liveUpdate_div_leftbutton" value="<#CTL_Cancel#>" onclick="showCancel();" class="button_gen">
+			<input type="button" id="liveUpdate_div_rightbutton" value="<#checkbox_Yes#>" onclick="doLiveUpdate(true);" class="button_gen">
 		</div>
 	</div>
 		
@@ -1755,12 +1754,13 @@ var startQuery = function(){
 						margin-top:5px;
 						width:90%;
 						height:30px;
-						background:url(/images/quotabar_bg_progress.gif);
-						background-repeat: repeat-x;
+						background: #596E74;
+						border-top: 1px solid #929EA1;
+						border-bottom: 1px solid #929eA1;
 					}
 				</style>
 				<span id="progress_bar_no" style="display:none;position:absolute;margin-left:285px;margin-top:7px;*margin-left:290px">0%</span>
-				<img id="updateProgress" src="/images/quotabar.gif" style="width:0%" height="30px">
+				<div id="updateProgress" class="quotabar" style="width:0%;height:30px;"></div>
 			</div>
 		</div>
 		<br>
@@ -1805,7 +1805,9 @@ var startQuery = function(){
 				</tr>
 			</table>
 		</div>
-		<div style="margin:5px;"><img style="width: 720px; *width: 710px; height: 2px;" src="/images/New_ui/export/line_export.png"></div>
+		<div style="margin:5px;">
+			<div style="width: 720px; *width: 710px; height: 2px;" class="splitLine"></div>
+		</div>
 		<br>
 		<br>
 	</div>

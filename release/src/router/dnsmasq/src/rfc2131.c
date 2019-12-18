@@ -234,7 +234,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	subnet_addr = option_addr(opt);
       
       /* If there is no client identifier option, use the hardware address */
-      if ((opt = option_find(mess, sz, OPTION_CLIENT_ID, 1)))
+      if (!option_bool(OPT_IGNORE_CLID) && (opt = option_find(mess, sz, OPTION_CLIENT_ID, 1)))
 	{
 	  clid_len = option_len(opt);
 	  clid = option_ptr(opt, 0);
@@ -274,8 +274,9 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
   if (mess->giaddr.s_addr || subnet_addr.s_addr || mess->ciaddr.s_addr)
     {
       struct dhcp_context *context_tmp, *context_new = NULL;
+      struct shared_network *share = NULL;
       struct in_addr addr;
-      int force = 0;
+      int force = 0, via_relay = 0;
       
       if (subnet_addr.s_addr)
 	{
@@ -286,6 +287,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	{
 	  addr = mess->giaddr;
 	  force = 1;
+	  via_relay = 1;
 	}
       else
 	{
@@ -302,42 +304,65 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	} 
 		
       if (!context_new)
-	for (context_tmp = daemon->dhcp; context_tmp; context_tmp = context_tmp->next)
-	  {
-	    struct in_addr netmask = context_tmp->netmask;
+	{
+	  for (context_tmp = daemon->dhcp; context_tmp; context_tmp = context_tmp->next)
+	    {
+	      struct in_addr netmask = context_tmp->netmask;
+	      
+	      /* guess the netmask for relayed networks */
+	      if (!(context_tmp->flags & CONTEXT_NETMASK) && context_tmp->netmask.s_addr == 0)
+		{
+		  if (IN_CLASSA(ntohl(context_tmp->start.s_addr)) && IN_CLASSA(ntohl(context_tmp->end.s_addr)))
+		    netmask.s_addr = htonl(0xff000000);
+		  else if (IN_CLASSB(ntohl(context_tmp->start.s_addr)) && IN_CLASSB(ntohl(context_tmp->end.s_addr)))
+		    netmask.s_addr = htonl(0xffff0000);
+		  else if (IN_CLASSC(ntohl(context_tmp->start.s_addr)) && IN_CLASSC(ntohl(context_tmp->end.s_addr)))
+		    netmask.s_addr = htonl(0xffffff00); 
+		}
 
-	    /* guess the netmask for relayed networks */
-	    if (!(context_tmp->flags & CONTEXT_NETMASK) && context_tmp->netmask.s_addr == 0)
-	      {
-		if (IN_CLASSA(ntohl(context_tmp->start.s_addr)) && IN_CLASSA(ntohl(context_tmp->end.s_addr)))
-		  netmask.s_addr = htonl(0xff000000);
-		else if (IN_CLASSB(ntohl(context_tmp->start.s_addr)) && IN_CLASSB(ntohl(context_tmp->end.s_addr)))
-		  netmask.s_addr = htonl(0xffff0000);
-		else if (IN_CLASSC(ntohl(context_tmp->start.s_addr)) && IN_CLASSC(ntohl(context_tmp->end.s_addr)))
-		  netmask.s_addr = htonl(0xffffff00); 
-	      }
-	    
-	    /* This section fills in context mainly when a client which is on a remote (relayed)
-	       network renews a lease without using the relay, after dnsmasq has restarted. */
-	    if (netmask.s_addr != 0  && 
-		is_same_net(addr, context_tmp->start, netmask) &&
-		is_same_net(addr, context_tmp->end, netmask))
-	      {
-		context_tmp->netmask = netmask;
-		if (context_tmp->local.s_addr == 0)
-		  context_tmp->local = fallback;
-		if (context_tmp->router.s_addr == 0)
-		  context_tmp->router = mess->giaddr;
-	   
-		/* fill in missing broadcast addresses for relayed ranges */
-		if (!(context_tmp->flags & CONTEXT_BRDCAST) && context_tmp->broadcast.s_addr == 0 )
-		  context_tmp->broadcast.s_addr = context_tmp->start.s_addr | ~context_tmp->netmask.s_addr;
-		
-		context_tmp->current = context_new;
-		context_new = context_tmp;
-	      }
-	  }
-      
+	      /* check to see is a context is OK because of a shared address on
+		 the relayed subnet. */
+	      if (via_relay)
+		for (share = daemon->shared_networks; share; share = share->next)
+		  {
+#ifdef HAVE_DHCP6
+		    if (share->shared_addr.s_addr == 0)
+		      continue;
+#endif
+		    if (share->if_index != 0 ||
+			share->match_addr.s_addr != mess->giaddr.s_addr)
+		      continue;
+		    
+		    if (netmask.s_addr != 0  && 
+			is_same_net(share->shared_addr, context_tmp->start, netmask) &&
+			is_same_net(share->shared_addr, context_tmp->end, netmask))
+		      break;
+		  }
+	      
+	      /* This section fills in context mainly when a client which is on a remote (relayed)
+		 network renews a lease without using the relay, after dnsmasq has restarted. */
+	      if (share ||
+		  (netmask.s_addr != 0  && 
+		   is_same_net(addr, context_tmp->start, netmask) &&
+		   is_same_net(addr, context_tmp->end, netmask)))
+		{
+		  context_tmp->netmask = netmask;
+		  if (context_tmp->local.s_addr == 0)
+		    context_tmp->local = fallback;
+		  if (context_tmp->router.s_addr == 0 && !share)
+		    context_tmp->router = mess->giaddr;
+		  
+		  /* fill in missing broadcast addresses for relayed ranges */
+		  if (!(context_tmp->flags & CONTEXT_BRDCAST) && context_tmp->broadcast.s_addr == 0 )
+		    context_tmp->broadcast.s_addr = context_tmp->start.s_addr | ~context_tmp->netmask.s_addr;
+		  
+		  context_tmp->current = context_new;
+		  context_new = context_tmp;
+		}
+	      
+	    }
+	}
+	  
       if (context_new || force)
 	context = context_new; 
     }
@@ -626,6 +651,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	    }
 	}
       
+      daemon->metrics[METRIC_BOOTP]++;
       log_packet("BOOTP", logaddr, mess->chaddr, mess->hlen, iface_name, NULL, message, mess->xid);
       
       return message ? 0 : dhcp_packet_size(mess, agent_id, real_end);
@@ -701,6 +727,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 
   if (client_hostname && option_bool(OPT_LOG_OPTS))
     my_syslog(MS_DHCP | LOG_INFO, _("%u client provides name: %s"), ntohl(mess->xid), client_hostname);
+
   
   if (have_config(config, CONFIG_NAME))
     {
@@ -718,6 +745,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       if (strlen(client_hostname) != 0)
 	{
 	  hostname = client_hostname;
+	  
 	  if (!config)
 	    {
 	      /* Search again now we have a hostname. 
@@ -735,6 +763,36 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  netid = &known_id;
 		}
 	    }
+	}
+    }
+
+  if (hostname)
+    {
+      struct dhcp_match_name *m;
+      size_t nl = strlen(hostname);
+      
+      for (m = daemon->dhcp_name_match; m; m = m->next)
+	{
+	  size_t ml = strlen(m->name);
+	  char save = 0;
+	  
+	  if (nl < ml)
+	    continue;
+	  if (nl > ml)
+	    {
+	      save = hostname[ml];
+	      hostname[ml] = 0;
+	    }
+	  
+	  if (hostname_isequal(hostname, m->name) &&
+	      (save == 0 || m->wildcard))
+	    {
+	      m->netid->next = netid;
+	      netid = m->netid;
+	    }
+	  
+	  if (save != 0)
+	    hostname[ml] = save;
 	}
     }
   
@@ -917,7 +975,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 			mess->siaddr = a_record_from_hosts(boot->tftp_sname, now);
 		      
 		      if (boot->file)
-			strncpy((char *)mess->file, boot->file, sizeof(mess->file)-1);
+			safe_strncpy((char *)mess->file, boot->file, sizeof(mess->file));
 		    }
 		  
 		  option_put(mess, end, OPTION_MESSAGE_TYPE, 1, 
@@ -928,6 +986,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  if ((pxe && !workaround) || !redirect4011)
 		    do_encap_opts(pxe_opts(pxearch, tagif_netid, tmp->local, now), OPTION_VENDOR_CLASS_OPT, DHOPT_VENDOR_MATCH, mess, end, 0);
 	    
+		  daemon->metrics[METRIC_PXE]++;
 		  log_packet("PXE", NULL, emac, emac_len, iface_name, ignore ? "proxy-ignored" : "proxy", NULL, mess->xid);
 		  log_tags(tagif_netid, ntohl(mess->xid));
 		  if (!ignore)
@@ -962,6 +1021,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       if (!(opt = option_find(mess, sz, OPTION_REQUESTED_IP, INADDRSZ)))
 	return 0;
       
+      daemon->metrics[METRIC_DHCPDECLINE]++;
       log_packet("DHCPDECLINE", option_ptr(opt, 0), emac, emac_len, iface_name, NULL, daemon->dhcp_buff, mess->xid);
       
       if (lease && lease->addr.s_addr == option_addr(opt).s_addr)
@@ -994,6 +1054,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       else
 	message = _("unknown lease");
 
+      daemon->metrics[METRIC_DHCPRELEASE]++;
       log_packet("DHCPRELEASE", &mess->ciaddr, emac, emac_len, iface_name, NULL, message, mess->xid);
 	
       return 0;
@@ -1060,6 +1121,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	    message = _("no address available");      
 	}
       
+      daemon->metrics[METRIC_DHCPDISCOVER]++;
       log_packet("DHCPDISCOVER", opt ? option_ptr(opt, 0) : NULL, emac, emac_len, iface_name, NULL, message, mess->xid); 
 
       if (message || !(context = narrow_context(context, mess->yiaddr, tagif_netid)))
@@ -1080,6 +1142,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	  goto rapid_commit;
 	}
       
+      daemon->metrics[METRIC_DHCPOFFER]++;
       log_packet("DHCPOFFER" , &mess->yiaddr, emac, emac_len, iface_name, NULL, NULL, mess->xid);
       
       time = calc_time(context, config, option_find(mess, sz, OPTION_LEASE_TIME, 4));
@@ -1192,6 +1255,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	  mess->yiaddr = mess->ciaddr;
 	}
 
+      daemon->metrics[METRIC_DHCPREQUEST]++;
       log_packet("DHCPREQUEST", &mess->yiaddr, emac, emac_len, iface_name, NULL, NULL, mess->xid);
       
     rapid_commit:
@@ -1265,6 +1329,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 
       if (message)
 	{
+	  daemon->metrics[rapid_commit ? METRIC_NOANSWER : METRIC_DHCPNAK]++;
 	  log_packet(rapid_commit ? "NOANSWER" : "DHCPNAK", &mess->yiaddr, emac, emac_len, iface_name, NULL, message, mess->xid);
 
 	  /* rapid commit case: lease allocate failed but don't send DHCPNAK */
@@ -1426,6 +1491,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	  else
 	    override = lease->override;
 
+	  daemon->metrics[METRIC_DHCPACK]++;
 	  log_packet("DHCPACK", &mess->yiaddr, emac, emac_len, iface_name, hostname, NULL, mess->xid);  
 
 	  clear_packet(mess, end);
@@ -1444,6 +1510,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       if (ignore || have_config(config, CONFIG_DISABLE))
 	message = _("ignored");
       
+      daemon->metrics[METRIC_DHCPINFORM]++;
       log_packet("DHCPINFORM", &mess->ciaddr, emac, emac_len, iface_name, message, NULL, mess->xid);
      
       if (message || mess->ciaddr.s_addr == 0)
@@ -1470,6 +1537,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 
       log_tags(tagif_netid, ntohl(mess->xid));
       
+      daemon->metrics[METRIC_DHCPACK]++;
       log_packet("DHCPACK", &mess->ciaddr, emac, emac_len, iface_name, hostname, NULL, mess->xid);
       
       if (lease)
@@ -1636,6 +1704,13 @@ static void log_packet(char *type, void *addr, unsigned char *ext_mac,
 	      daemon->namebuff,
 	      string ? string : "",
 	      err ? err : "");
+
+#ifdef HAVE_UBUS
+	if (!strcmp(type, "DHCPACK"))
+		ubus_event_bcast("dhcp.ack", daemon->namebuff, addr ? inet_ntoa(a) : NULL, string ? string : NULL, interface);
+	else if (!strcmp(type, "DHCPRELEASE"))
+		ubus_event_bcast("dhcp.release", daemon->namebuff, addr ? inet_ntoa(a) : NULL, string ? string : NULL, interface);
+#endif
 }
 
 static void log_options(unsigned char *start, u32 xid)
@@ -2311,7 +2386,7 @@ static void do_options(struct dhcp_context *context,
 	      in_list(req_options, OPTION_SNAME))
 	    option_put_string(mess, end, OPTION_SNAME, boot->sname, 1);
 	  else
-	    strncpy((char *)mess->sname, boot->sname, sizeof(mess->sname)-1);
+	    safe_strncpy((char *)mess->sname, boot->sname, sizeof(mess->sname));
 	}
       
       if (boot->file)
@@ -2321,7 +2396,7 @@ static void do_options(struct dhcp_context *context,
 	      in_list(req_options, OPTION_FILENAME))
 	    option_put_string(mess, end, OPTION_FILENAME, boot->file, 1);
 	  else
-	    strncpy((char *)mess->file, boot->file, sizeof(mess->file)-1);
+	    safe_strncpy((char *)mess->file, boot->file, sizeof(mess->file));
 	}
       
       if (boot->next_server.s_addr) 
@@ -2338,14 +2413,14 @@ static void do_options(struct dhcp_context *context,
       if ((!req_options || !in_list(req_options, OPTION_FILENAME)) &&
 	  (opt = option_find2(OPTION_FILENAME)) && !(opt->flags & DHOPT_FORCE))
 	{
-	  strncpy((char *)mess->file, (char *)opt->val, sizeof(mess->file)-1);
+	  safe_strncpy((char *)mess->file, (char *)opt->val, sizeof(mess->file));
 	  done_file = 1;
 	}
       
       if ((!req_options || !in_list(req_options, OPTION_SNAME)) &&
 	  (opt = option_find2(OPTION_SNAME)) && !(opt->flags & DHOPT_FORCE))
 	{
-	  strncpy((char *)mess->sname, (char *)opt->val, sizeof(mess->sname)-1);
+	  safe_strncpy((char *)mess->sname, (char *)opt->val, sizeof(mess->sname));
 	  done_server = 1;
 	}
       

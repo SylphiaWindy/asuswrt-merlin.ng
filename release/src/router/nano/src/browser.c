@@ -1,7 +1,7 @@
 /**************************************************************************
  *   browser.c  --  This file is part of GNU nano.                        *
  *                                                                        *
- *   Copyright (C) 2001-2011, 2013-2018 Free Software Foundation, Inc.    *
+ *   Copyright (C) 2001-2011, 2013-2019 Free Software Foundation, Inc.    *
  *   Copyright (C) 2015-2016 Benno Schulenberg                            *
  *                                                                        *
  *   GNU nano is free software: you can redistribute it and/or modify     *
@@ -76,8 +76,6 @@ char *do_browser(char *path)
 		path = mallocstrcpy(path, present_path);
 		present_name = mallocstrcpy(present_name, filelist[selected]);
 	}
-
-	assert(path != NULL && path[strlen(path) - 1] == '/');
 
 	if (dir != NULL) {
 		/* Get the file list, and set longest and width in the process. */
@@ -166,15 +164,13 @@ char *do_browser(char *path)
 			say_there_is_no_help();
 #endif
 		} else if (func == do_search_forward) {
-			do_filesearch();
-		} else if (func == do_research) {
-			do_fileresearch(FORWARD);
-#ifndef NANO_TINY
+			do_filesearch(FORWARD);
+		} else if (func == do_search_backward) {
+			do_filesearch(BACKWARD);
 		} else if (func == do_findprevious) {
 			do_fileresearch(BACKWARD);
 		} else if (func == do_findnext) {
 			do_fileresearch(FORWARD);
-#endif
 		} else if (func == do_left) {
 			if (selected > 0)
 				selected--;
@@ -225,11 +221,9 @@ char *do_browser(char *path)
 			selected = filelist_len - 1;
 		} else if (func == goto_dir_void) {
 			/* Ask for the directory to go to. */
-			int i = do_prompt(TRUE, FALSE, MGOTODIR, NULL, NULL,
-						/* TRANSLATORS: This is a prompt. */
-						browser_refresh, _("Go To Directory"));
-
-			if (i < 0) {
+			if (do_prompt(TRUE, FALSE, MGOTODIR, NULL, NULL,
+							/* TRANSLATORS: This is a prompt. */
+							browser_refresh, _("Go To Directory")) < 0) {
 				statusbar(_("Cancelled"));
 				continue;
 			}
@@ -307,13 +301,12 @@ char *do_browser(char *path)
 		} else if (func == (functionptrtype)implant) {
 			implant(first_sc_for(MBROWSER, func)->expansion);
 #endif
-		} else if (func == do_exit) {
-			/* Exit from the file browser. */
-			break;
 #ifndef NANO_TINY
 		} else if (kbinput == KEY_WINCH) {
-			;
+			;  /* Nothing to do. */
 #endif
+		} else if (func == do_exit) {
+			break;
 		} else
 			unbound_key(kbinput);
 
@@ -396,13 +389,11 @@ void read_the_list(const char *path, DIR *dir)
 	const struct dirent *nextdir;
 	size_t i = 0, path_len = strlen(path);
 
-	assert(path != NULL && path[strlen(path) - 1] == '/' && dir != NULL);
-
 	longest = 0;
 
 	/* Find the length of the longest filename in the current folder. */
 	while ((nextdir = readdir(dir)) != NULL) {
-		size_t name_len = strlenpt(nextdir->d_name);
+		size_t name_len = breadth(nextdir->d_name);
 
 		if (name_len > longest)
 			longest = name_len;
@@ -447,8 +438,6 @@ void read_the_list(const char *path, DIR *dir)
 	 * filelist, so record it. */
 	filelist_len = i;
 
-	assert(filelist != NULL);
-
 	/* Sort the list of names. */
 	qsort(filelist, filelist_len, sizeof(char *), diralphasort);
 
@@ -464,10 +453,11 @@ functionptrtype parse_browser_input(int *kbinput)
 {
 	if (!meta_key) {
 		switch (*kbinput) {
-			case ' ':
-				return do_page_down;
+			case BS_CODE:
 			case '-':
 				return do_page_up;
+			case ' ':
+				return do_page_down;
 			case '?':
 				return do_help_void;
 			case 'E':
@@ -488,11 +478,9 @@ functionptrtype parse_browser_input(int *kbinput)
 			case '/':
 				return do_search_forward;
 			case 'N':
-#ifndef NANO_TINY
 				return do_findprevious;
-#endif
 			case 'n':
-				return do_research;
+				return do_findnext;
 		}
 	}
 	return func_from_key(kbinput);
@@ -521,7 +509,7 @@ void browser_refresh(void)
 		struct stat st;
 		const char *thename = tail(filelist[i]);
 				/* The filename we display, minus the path. */
-		size_t namelen = strlenpt(thename);
+		size_t namelen = breadth(thename);
 				/* The length of the filename in columns. */
 		size_t infolen;
 				/* The length of the file information in columns. */
@@ -532,19 +520,18 @@ void browser_refresh(void)
 				/* Whether to put an ellipsis before the filename?  We don't
 				 * waste space on dots when there are fewer than 15 columns. */
 		char *disp = display_string(thename, dots ?
-				namelen + infomaxlen + 4 - longest : 0, longest, FALSE);
+				namelen + infomaxlen + 4 - longest : 0, longest, FALSE, FALSE);
 				/* The filename (or a fragment of it) in displayable format.
 				 * When a fragment, account for dots plus one space padding. */
 
-		/* If this is the selected item, start its highlighting, and
+		/* If this is the selected item, draw its highlighted bar upfront, and
 		 * remember its location to be able to place the cursor on it. */
 		if (i == selected) {
 			wattron(edit, interface_color_pair[SELECTED_TEXT]);
+			mvwprintw(edit, row, col, "%*s", longest, " ");
 			the_row = row;
 			the_column = col;
 		}
-
-		blank_row(edit, row, col, longest);
 
 		/* If the name is too long, we display something like "...ename". */
 		if (dots)
@@ -601,7 +588,7 @@ void browser_refresh(void)
 		}
 
 		/* Make sure info takes up no more than infomaxlen columns. */
-		infolen = strlenpt(info);
+		infolen = breadth(info);
 		if (infolen > infomaxlen) {
 			info[actual_x(info, infomaxlen)] = '\0';
 			infolen = infomaxlen;
@@ -659,29 +646,31 @@ void browser_select_dirname(const char *needle)
 	}
 }
 
-/* Prepare the prompt and ask the user what to search for.  Return -2
+/* Prepare the prompt and ask the user what to search for.  If forwards is
+ * TRUE, search forward in the list; otherwise, search backward.  Return -2
  * for a blank answer, -1 for Cancel, 0 when we have a string, and a
  * positive value when some function was run. */
-int filesearch_init(void)
+int filesearch_init(bool forwards)
 {
 	char *thedefault;
 	int response;
 
 	/* If something was searched for before, show it between square brackets. */
 	if (*last_search != '\0') {
-		char *disp = display_string(last_search, 0, COLS / 3, FALSE);
+		char *disp = display_string(last_search, 0, COLS / 3, FALSE, FALSE);
 
 		thedefault = charalloc(strlen(disp) + 7);
 		/* We use (COLS / 3) here because we need to see more on the line. */
 		sprintf(thedefault, " [%s%s]", disp,
-				(strlenpt(last_search) > COLS / 3) ? "..." : "");
+				(breadth(last_search) > COLS / 3) ? "..." : "");
 		free(disp);
 	} else
 		thedefault = mallocstrcpy(NULL, "");
 
 	/* Now ask what to search for. */
 	response = do_prompt(FALSE, FALSE, MWHEREISFILE, NULL, &search_history,
-						browser_refresh, "%s%s", _("Search"), thedefault);
+						browser_refresh, "%s%s%s", _("Search"),
+						!forwards ? _(" [Backwards]") : "", thedefault);
 	free(thedefault);
 
 	/* If only Enter was pressed but we have a previous string, it's okay. */
@@ -754,11 +743,12 @@ void findfile(const char *needle, bool forwards)
 	selected = looking_at;
 }
 
-/* Search for a filename. */
-void do_filesearch(void)
+/* Search for a filename.  If forwards is TRUE, search forward in the list;
+ * otherwise, search backward.*/
+void do_filesearch(bool forwards)
 {
 	/* If the user cancelled or jumped to first or last file, don't search. */
-	if (filesearch_init() != 0)
+	if (filesearch_init(forwards) != 0)
 		return;
 
 	/* If answer is now "", copy last_search into answer. */
@@ -773,7 +763,7 @@ void do_filesearch(void)
 		update_history(&search_history, answer);
 #endif
 
-	findfile(answer, TRUE);
+	findfile(answer, forwards);
 }
 
 /* Search again without prompting for the last given search string,

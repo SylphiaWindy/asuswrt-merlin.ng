@@ -1,7 +1,7 @@
 #!/bin/sh
 
 wget_timeout=`nvram get apps_wget_timeout`
-wget_options="-q -t 2 -T $wget_timeout --no-check-certificate"
+wget_options="-q -t 2 -T $wget_timeout"
 
 nvram set sig_state_update=0 # INITIALIZING
 nvram set sig_state_flag=0   # 0: Don't do upgrade  1: Do upgrade	
@@ -19,11 +19,9 @@ current_sig_ver=`echo $current_sig_ver | sed s/'\.'//g;`
 echo "$current_sig_ver"
 echo "$current_sig_ver" > /tmp/sig_upgrade.log
 
-#get FULL / PARTIAL signature
-dut_mem_size=`grep MemTotal /proc/meminfo | awk '{print $2}'`
-if [ "$dut_mem_size" -lt "128000" ]; then
-	sig_type="PART";
-else
+#get FULL / PARTIAL / Lite signature: FULL/PART/WRS @update_sig_type() iqos.c
+sig_type=`nvram get sig_type`
+if [ "$sig_type" == "" ]; then
 	sig_type="FULL";
 fi
 

@@ -16,11 +16,27 @@ LDFLAGS += -lm
 ifeq ($(RTCONFIG_AMAS),y)
 CFLAGS += -I$(TOP)/amas-utils -I$(TOP)/shared/sysdeps/amas -DUPDATECOST
 LDFLAGS += -L$(TOP)/amas-utils -lamas-utils
+ifeq ($(RTCONFIG_AVBLCHAN),y)
+CFLAGS += -DAVBLCHAN
+endif
+CFLAGS += -DFREE_MEMORY_DOWNLOAD
 endif
 
 ifeq ($(HND_ROUTER),y)
 CFLAGS += -DPTHREAD_STACK_SIZE_256K -DPTHREAD_EXIT
 LDFLAGS += -L$(TOP)/wlcsm -lwlcsm
+else ifeq ($(RTCONFIG_QCA),y)
+CFLAGS += -DPTHREAD_STACK_SIZE_256K -DPTHREAD_EXIT
+endif
+
+ifeq ($(RTCONFIG_NOTIFICATION_CENTER),y)
+CFLAGS  += -I$(TOP)/sqlite
+CFLAGS  += -I$(TOP)/nt_center/lib
+CFLAGS  += -I$(TOP)/nt_center/actMail
+CFLAGS  += -I$(TOP)/wlc_nt
+CFLAGS  += -DASUSWRT_SDK
+LDFLAGS += -L$(TOP)/sqlite/.libs -lsqlite3 -lpthread -L$(TOP)/nt_center/lib -lnt
+LDFLAGS += -L$(TOP)/wlc_nt -lwlc_nt_client
 endif
 
 ifeq ($(RTCONFIG_DHDAP), y)
@@ -37,7 +53,9 @@ else ifeq ($(RTCONFIG_RALINK),y)
 CFLAGS += -I$(TOP)/shared/sysdeps/ralink -I$(TOP)/wireless_tools
 else ifeq ($(RTCONFIG_QCA),y)
 CFLAGS += -fPIC
-endif 
+else ifeq ($(RTCONFIG_REALTEK),y)
+CFLAGS += -fPIC
+endif
 
 ifeq ($(RTCONFIG_SW_HW_AUTH),y)
 CFLAGS  += -I$(TOP)/sw-hw-auth
@@ -68,25 +86,31 @@ vpath %.c sysdeps/lantiq
 else
 COMMON_OBJS += broadcom.o
 vpath %.c sysdeps/broadcom
-endif 
+endif
 
 ifeq ($(RTCONFIG_AMAS),y)
 COMMON_OBJS += chmgmt.o
 endif
 COMMON_OBJS += encrypt.o cfg_crc.o cfg_udp.o cfg_dencrypt.o cfg_common.o cfg_ipc.o cfg_wevent.o cfg_upgrade.o cfg_clientlist.o cfg_sched.o cfg_slavelist.o
+ifeq ($(RTCONFIG_DWB),y)
+COMMON_OBJS += cfg_dwb.o
+endif
+COMMON_OBJS += cfg_chanspec.o
+COMMON_OBJS += cfg_parammgnt.o
+ifeq ($(RTCONFIG_AMAS),y)
+SERVER_OBJS += $(COMMON_OBJS) cfg_eventnotify.o
+endif
 SERVER_OBJS += $(COMMON_OBJS) cfg_mnt.o
-CLIENT_OBJS += $(COMMON_OBJS) cfg_client.o
+CLIENT_OBJS += $(COMMON_OBJS) cfg_capability.o cfg_client.o
 REPORTSTATUS_OBJS += cfg_common.o cfg_reportstatus.o
 
 ifeq ($(RTCONFIG_WIFI_SON),y)
 CFLAGS += -DREPORT_PAP_INFO
-#COMMON_OBJS += cfg_onboarding.o
-#CFLAGS += -DONBOARDING
-else
-ifneq ($(RTCONFIG_REALTEK),y)
+endif
+ifeq ($(RTCONFIG_AMAS),y)
 COMMON_OBJS += cfg_roaming.o
 CFLAGS += -DLEGACY_ROAMING
-COMMON_OBJS += cfg_onboarding.o
+COMMON_OBJS += cfg_onboarding.o cfg_ethevent.o
 CFLAGS += -DONBOARDING -DRSSI_LIST
 # for wireless channel sync
 CFLAGS += -DSYNC_WCHANNEL
@@ -98,15 +122,42 @@ CFLAGS += -DSYNC_WCHANNEL
 # for radar detected
 COMMON_OBJS += cfg_radardet.o
 CFLAGS += -DRADAR_DET
+COMMON_OBJS += cfg_conndiag.o
+CFLAGS += -DCONN_DIAG
+endif
+
+ifeq ($(RTCONFIG_AMASDB),y)
+CFLAGS += -DDUAL_BAND_DETECTION
+COMMON_OBJS += cfg_dualbandlist.o
+endif
+
+ifeq ($(RTCONFIG_TCODE),y)
+ifeq ($(RTCONFIG_CFGSYNC_LOCSYNC),y)
+COMMON_OBJS += cfg_loclist.o
 endif
 endif
 
-ifeq ($(BUILD_NAME), $(filter $(BUILD_NAME), RT-AC5300 GT-AC5300))
+ifeq ($(BUILD_NAME), $(filter $(BUILD_NAME), RT-AC5300 GT-AC5300 MAP-AC2200 RT-AC95U))
 CFLAGS += -DSUPPORT_TRI_BAND
 endif
 
 ifeq ($(RTCONFIG_MASTER_DET),y)
 CFLAGS += -DMASTER_DET
+endif
+
+ifeq ($(RTCONFIG_LANTIQ),y)
+# LDFLAGS += -L$(TOP)/fapi_wlan_common-1.0.0.1 -lfapiwlancommon -ldl -L$(TOP)/libhelper-1.4.0.2 -lhelper -lrt
+LDFLAGS += -L$(TOP)/fapi_wlan_common-05.04.00.131 -lfapiwlancommon -ldl -L$(TOP)/libhelper-1.4.0.2 -lhelper -L$(TOP)/libfapi-0.1 -lfapi
+LDFLAGS += -L$(TOP)/wlc_nt -lwlc_nt_client
+endif
+
+ifeq ($(RTCONFIG_LANTIQ),y)
+CFLAGS += -I$(TOP)/shared/sysdeps/lantiq -I$(TOP)/wireless_tools -I$(TOP)/fapi_wlan_common-05.04.00.131/include -I$(TOP)/libhelper-1.4.0.2/include -DPACKAGE_ID=\"fapi_wlan_common\" -DLOGGING_ID="fapi_wlan_common"
+CFLAGS  += -I$(TOP)/wlc_nt
+endif
+
+ifeq ($(RTCONFIG_BCMBSD),y)
+CFLAGS += -DSMART_CONNECT
 endif
 
 ifeq ($(wildcard $(SRCBASE)/router/cfg_mnt/*.c),)

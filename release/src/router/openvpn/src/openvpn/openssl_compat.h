@@ -88,6 +88,18 @@ EVP_MD_CTX_new(void)
 }
 #endif
 
+#if !defined(HAVE_EVP_CIPHER_CTX_RESET)
+#define EVP_CIPHER_CTX_reset EVP_CIPHER_CTX_init
+#endif
+
+#if !defined(HAVE_X509_GET0_NOTBEFORE)
+#define X509_get0_notBefore X509_get_notBefore
+#endif
+
+#if !defined(HAVE_X509_GET0_NOTAFTER)
+#define X509_get0_notAfter X509_get_notAfter
+#endif
+
 #if !defined(HAVE_HMAC_CTX_RESET)
 /**
  * Reset a HMAC context
@@ -581,6 +593,26 @@ RSA_meth_set_init(RSA_METHOD *meth, int (*init) (RSA *rsa))
         return 1;
     }
     return 0;
+}
+#endif
+
+#if !defined (HAVE_RSA_METH_SET_SIGN)
+/**
+ * Set the sign function of an RSA_METHOD object
+ *
+ * @param meth               The RSA_METHOD object
+ * @param sign               The sign function
+ * @return                   1 on success, 0 on error
+ */
+static inline
+int RSA_meth_set_sign(RSA_METHOD *meth,
+                      int (*sign) (int type, const unsigned char *m,
+                                   unsigned int m_length,
+                                   unsigned char *sigret, unsigned int *siglen,
+                                   const RSA *rsa))
+{
+    meth->rsa_sign = sign;
+    return 1;
 }
 #endif
 

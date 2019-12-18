@@ -197,7 +197,7 @@ function validForm(){
 }
 </script>
 </head>
-<body onload="init();">
+<body onload="init();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <iframe name="hidden_frame" id="hidden_frame" src="" width="0" height="0" frameborder="0"></iframe>
@@ -231,7 +231,7 @@ function validForm(){
 								<td bgcolor="#4D595D" colspan="3" valign="top">
 									<div>&nbsp;</div>
 									<div class="formfonttitle"><#Network_Tools#> - Netstat</div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div class="formfontdesc" id="cmdDesc"><#NetworkTools_Info#></div>
 									<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">
 										<tr>
@@ -291,7 +291,7 @@ function validForm(){
 
 									<div class="apply_gen">
 										<input class="button_gen" id="cmdBtn" onClick="onSubmitCtrl(this, ' Refresh ')" type="button" value="Netstat">
-										<img id="loadingIcon" style="display:none;" src="/images/InternetScan.gif"></span>
+										<img id="loadingIcon" style="display:none;" src="/images/InternetScan.gif">
 									</div>
 
 									<div style="margin-top:8px" id="logArea">
@@ -311,7 +311,6 @@ function validForm(){
 </form>
 
 <div id="footer"></div>
-</body>
 <script type="text/javascript">
 <!--[if !IE]>-->
 	(function($){
@@ -320,4 +319,5 @@ function validForm(){
 	})(jQuery);
 <!--<![endif]-->
 </script>
+</body>
 </html>

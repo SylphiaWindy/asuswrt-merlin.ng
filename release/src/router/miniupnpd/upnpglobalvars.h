@@ -1,8 +1,8 @@
-/* $Id: upnpglobalvars.h,v 1.45 2018/01/16 00:50:49 nanard Exp $ */
+/* $Id: upnpglobalvars.h,v 1.48 2019/05/21 08:39:45 nanard Exp $ */
 /* vim: tabstop=4 shiftwidth=4 noexpandtab
  * MiniUPnP project
  * http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
- * (c) 2006-2018 Thomas Bernard
+ * (c) 2006-2019 Thomas Bernard
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution */
 
@@ -17,6 +17,15 @@
 /* name of the network interface used to access internet */
 extern const char * ext_if_name;
 
+#ifdef ENABLE_IPV6
+/* name of the network interface used to access internet - for IPv6*/
+extern const char * ext_if_name6;
+#endif
+
+/* stun host/port configuration */
+extern const char * ext_stun_host;
+extern uint16_t ext_stun_port;
+
 /* file to store all leases */
 #ifdef ENABLE_LEASEFILE
 extern const char * lease_file;
@@ -25,6 +34,10 @@ extern const char * lease_file;
 /* forced ip address to use for this interface
  * when NULL, getifaddr() is used */
 extern const char * use_ext_ip_addr;
+
+/* disallow all port forwarding requests when
+ * we are behind restrictive nat */
+extern int disable_port_forwarding;
 
 /* parameters to return to upnp client when asked */
 extern unsigned long downstream_bitrate;
@@ -68,6 +81,8 @@ extern int runtime_flags;
 #ifdef IGD_V2
 #define FORCEIGDDESCV1MASK 0x0800
 #endif
+
+#define PERFORMSTUNMASK    0x1000
 
 #define SETFLAG(mask)	runtime_flags |= mask
 #define GETFLAG(mask)	(runtime_flags & mask)

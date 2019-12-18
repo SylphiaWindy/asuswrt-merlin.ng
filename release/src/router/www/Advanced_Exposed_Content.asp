@@ -83,8 +83,8 @@ function done_validating(action){
 
 function initial(){
 	show_menu();
-	// https://www.asus.com/US/support/FAQ/1001253
-	httpApi.faqURL("faq", "1001253", "https://www.asus.com", "/support/FAQ/");
+	// https://www.asus.com/US/support/FAQ/1011722
+	httpApi.faqURL("1011722", function(url){document.getElementById("faq").href=url;});
 	dmz_enable_check();
 
 	//if(dualWAN_support && wans_mode == "lb")
@@ -137,7 +137,7 @@ function dmz_on_off(){
 }
 </script>
 </head>
-<body onload="initial();">
+<body onload="initial();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 
@@ -174,7 +174,7 @@ function dmz_on_off(){
 									<div class="formfonttitle">
 										<#menu5_3#> - <#menu5_3_5#>
 									</div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div class="formfontdesc">
 										<#IPConnection_ExposedIP_sectiondesc#>
 										<br/>

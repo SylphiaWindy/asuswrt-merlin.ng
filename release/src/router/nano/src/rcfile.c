@@ -1,9 +1,10 @@
 /**************************************************************************
  *   rcfile.c  --  This file is part of GNU nano.                         *
  *                                                                        *
- *   Copyright (C) 2001-2011, 2013-2018 Free Software Foundation, Inc.    *
+ *   Copyright (C) 2001-2011, 2013-2019 Free Software Foundation, Inc.    *
  *   Copyright (C) 2014 Mike Frysinger                                    *
- *   Copyright (C) 2014-2018 Benno Schulenberg                            *
+ *   Copyright (C) 2019 Brand Huntsman                                    *
+ *   Copyright (C) 2014-2019 Benno Schulenberg                            *
  *                                                                        *
  *   GNU nano is free software: you can redistribute it and/or modify     *
  *   it under the terms of the GNU General Public License as published    *
@@ -42,17 +43,22 @@ static const rcoption rcopts[] = {
 #ifdef ENABLE_JUSTIFY
 	{"brackets", 0},
 #endif
+#ifdef ENABLE_WRAPPING
+	{"breaklonglines", BREAK_LONG_LINES},
+#endif
 	{"constantshow", CONSTANT_SHOW},
+	{"emptyline", EMPTY_LINE},
 #ifdef ENABLED_WRAPORJUSTIFY
 	{"fill", 0},
 #endif
 #ifdef ENABLE_HISTORIES
 	{"historylog", HISTORYLOG},
 #endif
+	{"jumpyscrolling", JUMPY_SCROLLING},
 #ifdef ENABLE_LINENUMBERS
 	{"linenumbers", LINE_NUMBERS},
 #endif
-	{"morespace", MORE_SPACE},
+	{"morespace", MORE_SPACE},  /* Deprecated; remove in 2021. */
 #ifdef ENABLE_MOUSE
 	{"mouse", USE_MOUSE},
 #endif
@@ -63,13 +69,13 @@ static const rcoption rcopts[] = {
 	{"nonewlines", NO_NEWLINES},
 	{"nopauses", NO_PAUSES},
 #ifdef ENABLE_WRAPPING
-	{"nowrap", NO_WRAP},
+	{"nowrap", NO_WRAP},  /* Deprecated; remove in 2021. */
 #endif
 #ifdef ENABLE_OPERATINGDIR
 	{"operatingdir", 0},
 #endif
 #ifdef ENABLE_HISTORIES
-	{"positionlog", POS_HISTORY},
+	{"positionlog", POSITIONLOG},
 #endif
 	{"preserve", PRESERVE},
 #ifdef ENABLE_JUSTIFY
@@ -77,8 +83,8 @@ static const rcoption rcopts[] = {
 	{"quotestr", 0},
 #endif
 	{"quickblank", QUICK_BLANK},
+	{"rawsequences", RAW_SEQUENCES},
 	{"rebinddelete", REBIND_DELETE},
-	{"rebindkeypad", REBIND_KEYPAD},
 	{"regexp", USE_REGEXP},
 #ifdef ENABLE_SPELLER
 	{"speller", 0},
@@ -94,18 +100,15 @@ static const rcoption rcopts[] = {
 	{"autoindent", AUTOINDENT},
 	{"backup", BACKUP_FILE},
 	{"backupdir", 0},
-	{"backwards", BACKWARDS_SEARCH},
 	{"casesensitive", CASE_SENSITIVE},
-	{"cut", CUT_FROM_CURSOR},  /* deprecated form, remove end of 2018 */
 	{"cutfromcursor", CUT_FROM_CURSOR},
-	{"justifytrim", TRIM_BLANKS},  /* deprecated form, remove end of 2018 */
+	{"guidestripe", 0},
 	{"locking", LOCKING},
 	{"matchbrackets", 0},
 	{"noconvert", NO_CONVERT},
-	{"quiet", QUIET},
 	{"showcursor", SHOW_CURSOR},
 	{"smarthome", SMART_HOME},
-	{"smooth", SMOOTH_SCROLL},
+	{"smooth", SMOOTH_SCROLL},  /* Deprecated; remove in 2021. */
 	{"softwrap", SOFTWRAP},
 	{"tabstospaces", TABS_TO_SPACES},
 	{"trimblanks", TRIM_BLANKS},
@@ -113,10 +116,12 @@ static const rcoption rcopts[] = {
 	{"whitespace", 0},
 	{"wordbounds", WORD_BOUNDS},
 	{"wordchars", 0},
+	{"zap", LET_THEM_ZAP},
 #endif
 #ifdef ENABLE_COLOR
 	{"titlecolor", 0},
 	{"numbercolor", 0},
+	{"stripecolor", 0},
 	{"selectedcolor", 0},
 	{"statuscolor", 0},
 	{"errorcolor", 0},
@@ -136,30 +141,54 @@ static bool opensyntax = FALSE;
 		 * or when a new syntax command is seen, this bool becomes FALSE. */
 static syntaxtype *live_syntax;
 		/* The syntax that is currently being parsed. */
+static bool seen_color_command = FALSE;
+		/* Whether a syntax definition contains any color commands. */
 static colortype *lastcolor = NULL;
 		/* The end of the color list for the current syntax. */
 #endif
 
-/* Report an error in an rcfile, printing it to stderr. */
-void rcfile_error(const char *msg, ...)
+static linestruct *errors_head = NULL;
+static linestruct *errors_tail = NULL;
+		/* Beginning and end of a list of errors in rcfiles, if any. */
+
+/* Send the gathered error messages (if any) to the terminal. */
+void display_rcfile_errors()
 {
+	for (linestruct *error = errors_head; error != NULL; error = error->next)
+		fprintf(stderr, "%s\n", error->data);
+}
+
+#define MAXSIZE  (PATH_MAX + 200)
+
+/* Store the given error message in a linked list, to be printed upon exit. */
+void jot_error(const char *msg, ...)
+{
+	linestruct *error = make_new_node(errors_tail);
+	char textbuf[MAXSIZE];
+	int length = 0;
 	va_list ap;
+
+	if (errors_head == NULL)
+		errors_head = error;
+	else
+		errors_tail->next = error;
+	errors_tail = error;
 
 	if (rcfile_with_errors == NULL)
 		rcfile_with_errors = strdup(nanorc);
 
 	if (lineno > 0)
-		fprintf(stderr, _("Error in %s on line %zu: "), nanorc, lineno);
+		length = snprintf(textbuf, MAXSIZE, _("Error in %s on line %zu: "),
+											nanorc, lineno);
 
 	va_start(ap, msg);
-	vfprintf(stderr, _(msg), ap);
+	length += vsnprintf(textbuf + length, MAXSIZE - length, _(msg), ap);
 	va_end(ap);
 
-	fprintf(stderr, "\n");
+	error->data = nmalloc(length + 1);
+	sprintf(error->data, "%s", textbuf);
 }
-#endif /* ENABLE_NANORC */
 
-#if defined(ENABLE_NANORC) || defined(ENABLE_HISTORIES)
 /* Parse the next word from the string, null-terminate it, and return
  * a pointer to the first character after the null terminator.  The
  * returned pointer will point to '\0' if we hit the end of the line. */
@@ -179,9 +208,7 @@ char *parse_next_word(char *ptr)
 
 	return ptr;
 }
-#endif /* ENABLE_NANORC || ENABLE_HISTORIES */
 
-#ifdef ENABLE_NANORC
 /* Parse an argument, with optional quotes, after a keyword that takes
  * one.  If the next word starts with a ", we say that it ends with the
  * last " of the line.  Otherwise, we interpret it as usual, so that the
@@ -200,7 +227,7 @@ char *parse_argument(char *ptr)
 	}
 
 	if (last_quote == NULL) {
-		rcfile_error(N_("Argument '%s' has an unterminated \""), ptr_save);
+		jot_error(N_("Argument '%s' has an unterminated \""), ptr_save);
 		return NULL;
 	}
 
@@ -225,7 +252,7 @@ char *parse_next_regex(char *ptr)
 		ptr++;
 
 	if (*ptr == '\0') {
-		rcfile_error(N_("Regex strings must begin and end with a \" character"));
+		jot_error(N_("Regex strings must begin and end with a \" character"));
 		return NULL;
 	}
 
@@ -238,39 +265,41 @@ char *parse_next_regex(char *ptr)
 	return ptr;
 }
 
-/* Compile the regular expression regex to see if it's valid.  Return
- * TRUE if it is, and FALSE otherwise. */
-bool nregcomp(const char *regex, int compile_flags)
+/* Compile the given regular expression and store the result in packed (when
+ * this pointer is not NULL).  Return TRUE when the expression is valid. */
+bool compile(const char *expression, int rex_flags, regex_t **packed)
 {
-	regex_t preg;
-	const char *r = fixbounds(regex);
-	int rc = regcomp(&preg, r, compile_flags);
+	regex_t *compiled = nmalloc(sizeof(regex_t));
+	int outcome = regcomp(compiled, expression, rex_flags);
 
-	if (rc != 0) {
-		size_t len = regerror(rc, &preg, NULL, 0);
-		char *str = charalloc(len);
+	if (outcome != 0) {
+		size_t length = regerror(outcome, compiled, NULL, 0);
+		char *message = charalloc(length);
 
-		regerror(rc, &preg, str, len);
-		rcfile_error(N_("Bad regex \"%s\": %s"), r, str);
-		free(str);
+		regerror(outcome, compiled, message, length);
+		jot_error(N_("Bad regex \"%s\": %s"), expression, message);
+		free(message);
 	}
 
-	regfree(&preg);
-	return (rc == 0);
+	if (packed == NULL || outcome != 0) {
+		regfree(compiled);
+		free(compiled);
+	} else
+		*packed = compiled;
+
+	return (outcome == 0);
 }
 
 /* Parse the next syntax name and its possible extension regexes from the
  * line at ptr, and add it to the global linked list of color syntaxes. */
-void parse_syntax(char *ptr)
+void begin_new_syntax(char *ptr)
 {
 	char *nameptr = ptr;
-
-	opensyntax = FALSE;
 
 	/* Check that the syntax name is not empty. */
 	if (*ptr == '\0' || (*ptr == '"' &&
 						(*(ptr + 1) == '\0' || *(ptr + 1) == '"'))) {
-		rcfile_error(N_("Missing syntax name"));
+		jot_error(N_("Missing syntax name"));
 		return;
 	}
 
@@ -278,7 +307,7 @@ void parse_syntax(char *ptr)
 
 	/* Check that quotes around the name are either paired or absent. */
 	if ((*nameptr == '\x22') ^ (nameptr[strlen(nameptr) - 1] == '\x22')) {
-		rcfile_error(N_("Unpaired quote in syntax name"));
+		jot_error(N_("Unpaired quote in syntax name"));
 		return;
 	}
 
@@ -290,23 +319,24 @@ void parse_syntax(char *ptr)
 
 	/* Redefining the "none" syntax is not allowed. */
 	if (strcmp(nameptr, "none") == 0) {
-		rcfile_error(N_("The \"none\" syntax is reserved"));
+		jot_error(N_("The \"none\" syntax is reserved"));
 		return;
 	}
 
 	/* Initialize a new syntax struct. */
 	live_syntax = (syntaxtype *)nmalloc(sizeof(syntaxtype));
 	live_syntax->name = mallocstrcpy(NULL, nameptr);
+	live_syntax->filename = strdup(nanorc);
+	live_syntax->lineno = lineno;
+	live_syntax->augmentations = NULL;
 	live_syntax->extensions = NULL;
 	live_syntax->headers = NULL;
 	live_syntax->magics = NULL;
 	live_syntax->linter = NULL;
-	live_syntax->formatter = NULL;
 #ifdef ENABLE_COMMENT
 	live_syntax->comment = mallocstrcpy(NULL, GENERAL_COMMENT_CHARACTER);
 #endif
 	live_syntax->color = NULL;
-	lastcolor = NULL;
 	live_syntax->nmultis = 0;
 
 	/* Hook the new syntax in at the top of the list. */
@@ -314,14 +344,11 @@ void parse_syntax(char *ptr)
 	syntaxes = live_syntax;
 
 	opensyntax = TRUE;
-
-#ifdef DEBUG
-	fprintf(stderr, "Starting a new syntax type: \"%s\"\n", nameptr);
-#endif
+	seen_color_command = FALSE;
 
 	/* The default syntax should have no associated extensions. */
 	if (strcmp(live_syntax->name, "default") == 0 && *ptr != '\0') {
-		rcfile_error(N_("The \"default\" syntax does not accept extensions"));
+		jot_error(N_("The \"default\" syntax does not accept extensions"));
 		return;
 	}
 
@@ -330,6 +357,22 @@ void parse_syntax(char *ptr)
 		grab_and_store("extension", ptr, &live_syntax->extensions);
 }
 #endif /* ENABLE_COLOR */
+
+/* Verify that a syntax definition contains at least one color command. */
+void check_for_nonempty_syntax(void)
+{
+#ifdef ENABLE_COLOR
+	if (opensyntax && !seen_color_command) {
+		size_t current_lineno = lineno;
+
+		lineno = live_syntax->lineno;
+		jot_error(N_("Syntax \"%s\" has no color commands"), live_syntax->name);
+		lineno = current_lineno;
+	}
+
+	opensyntax = FALSE;
+#endif
+}
 
 /* Return TRUE when the given function is present in almost all menus. */
 bool is_universal(void (*func)(void))
@@ -340,7 +383,7 @@ bool is_universal(void (*func)(void))
 		func == do_prev_word_void || func == do_next_word_void ||
 #endif
 		func == do_delete || func == do_backspace ||
-		func == do_cut_text_void || func == do_uncut_text ||
+		func == cut_text || func == paste_text ||
 		func == do_tab || func == do_enter || func == do_verbatim_input);
 }
 
@@ -348,15 +391,14 @@ bool is_universal(void (*func)(void))
 void parse_binding(char *ptr, bool dobind)
 {
 	char *keyptr = NULL, *keycopy = NULL, *funcptr = NULL, *menuptr = NULL;
-	sc *s, *newsc = NULL;
-	int menu;
+	keystruct *s, *newsc = NULL;
+	int menu, mask = 0;
+	funcstruct *f;
 
-#ifdef DEBUG
-	fprintf(stderr, "Starting the rebinding code...\n");
-#endif
+	check_for_nonempty_syntax();
 
 	if (*ptr == '\0') {
-		rcfile_error(N_("Missing key name"));
+		jot_error(N_("Missing key name"));
 		return;
 	}
 
@@ -365,7 +407,7 @@ void parse_binding(char *ptr, bool dobind)
 	keycopy = mallocstrcpy(NULL, keyptr);
 
 	if (strlen(keycopy) < 2) {
-		rcfile_error(N_("Key name is too short"));
+		jot_error(N_("Key name is too short"));
 		goto free_things;
 	}
 
@@ -376,7 +418,7 @@ void parse_binding(char *ptr, bool dobind)
 		if (strlen(keycopy) > 2)
 			keycopy[2] = toupper((unsigned char)keycopy[2]);
 		else {
-			rcfile_error(N_("Key name is too short"));
+			jot_error(N_("Key name is too short"));
 			goto free_things;
 		}
 	}
@@ -386,10 +428,10 @@ void parse_binding(char *ptr, bool dobind)
 	if (!strcasecmp(keycopy, "Ins") || !strcasecmp(keycopy, "Del"))
 		keycopy[1] = tolower((unsigned char)keycopy[1]);
 	else if (keycopy[0] != '^' && keycopy[0] != 'M' && keycopy[0] != 'F') {
-		rcfile_error(N_("Key name must begin with \"^\", \"M\", or \"F\""));
+		jot_error(N_("Key name must begin with \"^\", \"M\", or \"F\""));
 		goto free_things;
 	} else if (keycode_from_string(keycopy) < 0) {
-		rcfile_error(N_("Key name %s is invalid"), keycopy);
+		jot_error(N_("Key name %s is invalid"), keycopy);
 		goto free_things;
 	}
 
@@ -398,7 +440,7 @@ void parse_binding(char *ptr, bool dobind)
 		ptr = parse_argument(ptr);
 
 		if (funcptr[0] == '\0') {
-			rcfile_error(N_("Must specify a function to bind the key to"));
+			jot_error(N_("Must specify a function to bind the key to"));
 			goto free_things;
 		} else if (ptr == NULL)
 			goto free_things;
@@ -409,7 +451,8 @@ void parse_binding(char *ptr, bool dobind)
 
 	if (menuptr[0] == '\0') {
 		/* TRANSLATORS: Do not translate the word "all". */
-		rcfile_error(N_("Must specify a menu (or \"all\") in which to bind/unbind the key"));
+		jot_error(N_("Must specify a menu (or \"all\") "
+						"in which to bind/unbind the key"));
 		goto free_things;
 	}
 
@@ -417,89 +460,86 @@ void parse_binding(char *ptr, bool dobind)
 		/* If the thing to bind starts with a double quote, it is a string,
 		 * otherwise it is the name of a function. */
 		if (*funcptr == '"') {
-			newsc = nmalloc(sizeof(sc));
+			newsc = nmalloc(sizeof(keystruct));
 			newsc->func = (functionptrtype)implant;
 			newsc->expansion = mallocstrcpy(NULL, funcptr + 1);
 #ifndef NANO_TINY
 			newsc->toggle = 0;
 #endif
 		} else
-		    newsc = strtosc(funcptr);
+			newsc = strtosc(funcptr);
 
 		if (newsc == NULL) {
-			rcfile_error(N_("Cannot map name \"%s\" to a function"), funcptr);
+			jot_error(N_("Cannot map name \"%s\" to a function"), funcptr);
 			goto free_things;
 		}
 	}
 
-	menu = strtomenu(menuptr);
+	menu = name_to_menu(menuptr);
 	if (menu < 1) {
-		rcfile_error(N_("Cannot map name \"%s\" to a menu"), menuptr);
+		jot_error(N_("Cannot map name \"%s\" to a menu"), menuptr);
 		goto free_things;
 	}
 
-	if (dobind) {
-		subnfunc *f;
-		int mask = 0;
+	/* Wipe the given shortcut from the given menu. */
+	for (s = sclist; s != NULL; s = s->next)
+		if ((s->menus & menu) && strcmp(s->keystr, keycopy) == 0)
+			s->menus &= ~menu;
 
-		/* Tally up the menus where the function exists. */
-		for (f = allfuncs; f != NULL; f = f->next)
-			if (f->func == newsc->func)
-				mask = mask | f->menus;
+	/* When unbinding, we are done now. */
+	if (!dobind)
+		goto free_things;
+
+	/* Tally up the menus where the function exists. */
+	for (f = allfuncs; f != NULL; f = f->next)
+		if (f->func == newsc->func)
+			mask = mask | f->menus;
 
 #ifndef NANO_TINY
-		/* Handle the special case of the toggles. */
-		if (newsc->func == do_toggle_void)
-			mask = MMAIN;
+	/* Handle the special case of the toggles. */
+	if (newsc->func == do_toggle_void)
+		mask = MMAIN;
 #endif
 #ifdef ENABLE_NANORC
-		/* Handle the special case of a key defined as a string. */
-		if (newsc->func == (functionptrtype)implant)
-			mask = MMOST | MHELP;
+	/* Handle the special case of a key defined as a string. */
+	if (newsc->func == (functionptrtype)implant)
+		mask = MMOST | MHELP;
 #endif
-		/* Now limit the given menu to those where the function exists. */
-		menu = menu & (is_universal(newsc->func) ? MMOST : mask);
+	/* Now limit the given menu to those where the function exists. */
+	menu = menu & (is_universal(newsc->func) ? MMOST : mask);
 
-		if (!menu) {
-			rcfile_error(N_("Function '%s' does not exist in menu '%s'"), funcptr, menuptr);
-			goto free_things;
-		}
-
-		newsc->menus = menu;
-		assign_keyinfo(newsc, keycopy, 0);
-
-		/* Do not allow rebinding a frequent escape-sequence starter: Esc [. */
-		if (newsc->meta && newsc->keycode == 91) {
-			rcfile_error(N_("Sorry, keystroke \"%s\" may not be rebound"), newsc->keystr);
-			goto free_things;
-		}
+	if (!menu) {
+		if (!ISSET(RESTRICTED) && !ISSET(VIEW_MODE))
+			jot_error(N_("Function '%s' does not exist in menu '%s'"),
+								funcptr, menuptr);
+		goto free_things;
 	}
 
-	/* Now find and delete any existing same shortcut in the menu(s). */
-	for (s = sclist; s != NULL; s = s->next) {
-		if ((s->menus & menu) && !strcmp(s->keystr, keycopy))
-			s->menus &= ~menu;
-	}
+	newsc->menus = menu;
+	assign_keyinfo(newsc, keycopy, 0);
 
-	if (dobind) {
-#ifndef NANO_TINY
-		/* If this is a toggle, copy its sequence number. */
-		if (newsc->func == do_toggle_void) {
-			for (s = sclist; s != NULL; s = s->next)
-				if (s->func == do_toggle_void && s->toggle == newsc->toggle)
-					newsc->ordinal = s->ordinal;
-		} else
-			newsc->ordinal = 0;
-#endif
-		/* Add the new shortcut at the start of the list. */
-		newsc->next = sclist;
-		sclist = newsc;
+	/* Disallow rebinding ^[ and frequent escape-sequence starter "Esc [". */
+	if ((!newsc->meta && newsc->keycode == ESC_CODE) ||
+				(newsc->meta && newsc->keycode == '[')) {
+		jot_error(N_("Keystroke %s may not be rebound"), keycopy);
+  free_things:
+		free(keycopy);
+		free(newsc);
 		return;
 	}
 
-  free_things:
-	free(newsc);
-	free(keycopy);
+#ifndef NANO_TINY
+	/* If this is a toggle, find and copy its sequence number. */
+	if (newsc->func == do_toggle_void) {
+		for (s = sclist; s != NULL; s = s->next)
+			if (s->func == do_toggle_void && s->toggle == newsc->toggle)
+				newsc->ordinal = s->ordinal;
+	} else
+		newsc->ordinal = 0;
+#endif
+	/* Add the new shortcut at the start of the list. */
+	newsc->next = sclist;
+	sclist = newsc;
 }
 
 /* Verify that the given file exists, is not a folder nor a device. */
@@ -514,28 +554,31 @@ bool is_good_file(char *file)
 	/* If the thing exists, it may be neither a directory nor a device. */
 	if (stat(file, &rcinfo) != -1 && (S_ISDIR(rcinfo.st_mode) ||
 				S_ISCHR(rcinfo.st_mode) || S_ISBLK(rcinfo.st_mode))) {
-		rcfile_error(S_ISDIR(rcinfo.st_mode) ? _("\"%s\" is a directory") :
-										_("\"%s\" is a device file"), file);
+		jot_error(S_ISDIR(rcinfo.st_mode) ? N_("\"%s\" is a directory") :
+										N_("\"%s\" is a device file"), file);
 		return FALSE;
 	} else
 		return TRUE;
 }
 
 #ifdef ENABLE_COLOR
-/* Read and parse one included syntax file. */
-static void parse_one_include(char *file)
+/* Partially parse the syntaxes in the given file, or (when syntax
+ * is not NULL) fully parse one specific syntax from the file . */
+void parse_one_include(char *file, syntaxtype *syntax)
 {
+	char *was_nanorc = nanorc;
+	size_t was_lineno = lineno;
+	augmentstruct *extra;
 	FILE *rcstream;
 
 	/* Don't open directories, character files, or block files. */
 	if (!is_good_file(file))
 		return;
 
-	/* Open the included syntax file. */
 	rcstream = fopen(file, "rb");
 
 	if (rcstream == NULL) {
-		rcfile_error(_("Error reading %s: %s"), file, strerror(errno));
+		jot_error(N_("Error reading %s: %s"), file, strerror(errno));
 		return;
 	}
 
@@ -544,41 +587,71 @@ static void parse_one_include(char *file)
 	nanorc = file;
 	lineno = 0;
 
-#ifdef DEBUG
-	fprintf(stderr, "Parsing file \"%s\"\n", file);
-#endif
+	/* If this is the first pass, parse only the prologue. */
+	if (syntax == NULL) {
+		parse_rcfile(rcstream, TRUE, TRUE);
+		nanorc = was_nanorc;
+		lineno = was_lineno;
+		return;
+	}
 
-	parse_rcfile(rcstream, TRUE);
+	live_syntax = syntax;
+	lastcolor = NULL;
+
+	/* Fully parse the given syntax (as it is about to be used). */
+	parse_rcfile(rcstream, TRUE, FALSE);
+
+	extra = syntax->augmentations;
+
+	/* Apply any stored extendsyntax commands. */
+	while (extra != NULL) {
+		char *keyword = extra->data;
+		char *therest = parse_next_word(extra->data);
+
+		nanorc = extra->filename;
+		lineno = extra->lineno;
+
+		if (!parse_syntax_commands(keyword, therest))
+			jot_error(N_("Command \"%s\" not understood"), keyword);
+
+		extra = extra->next;
+	}
+
+	free(syntax->filename);
+	syntax->filename = NULL;
+
+	nanorc = was_nanorc;
+	lineno = was_lineno;
 }
 
 /* Expand globs in the passed name, and parse the resultant files. */
 void parse_includes(char *ptr)
 {
-	char *option, *nanorc_save = nanorc, *expanded;
-	size_t lineno_save = lineno, i;
+	char *pattern, *expanded;
 	glob_t files;
+	int result;
 
-	option = ptr;
-	if (*option == '"')
-		option++;
+	check_for_nonempty_syntax();
+
+	pattern = ptr;
+	if (*pattern == '"')
+		pattern++;
 	ptr = parse_argument(ptr);
 
-	/* Expand tildes first, then the globs. */
-	expanded = real_dir_from_tilde(option);
+	/* Expand a tilde first, then try to match the globbing pattern. */
+	expanded = real_dir_from_tilde(pattern);
+	result = glob(expanded, GLOB_ERR, NULL, &files);
 
-	if (glob(expanded, GLOB_ERR|GLOB_NOSORT, NULL, &files) == 0) {
-		for (i = 0; i < files.gl_pathc; ++i)
-			parse_one_include(files.gl_pathv[i]);
-	} else
-		rcfile_error(_("Error expanding %s: %s"), option, strerror(errno));
+	/* If there are matches, process each of them.  Otherwise, only
+	 * report an error if it's something other than zero matches. */
+	if (result == 0) {
+		for (size_t i = 0; i < files.gl_pathc; ++i)
+			parse_one_include(files.gl_pathv[i], NULL);
+	} else if (result != GLOB_NOMATCH)
+		jot_error(N_("Error expanding %s: %s"), pattern, strerror(errno));
 
 	globfree(&files);
 	free(expanded);
-
-	/* We're done with the included file(s).  Restore the original
-	 * filename and line number position. */
-	nanorc = nanorc_save;
-	lineno = lineno_save;
 }
 
 /* Return the short value corresponding to the color named in colorname,
@@ -610,20 +683,23 @@ short color_to_short(const char *colorname, bool *bright)
 	else if (strcasecmp(colorname, "normal") == 0)
 		return USE_THE_DEFAULT;
 
-	rcfile_error(N_("Color \"%s\" not understood"), colorname);
+	jot_error(N_("Color \"%s\" not understood"), colorname);
 	return BAD_COLOR;
 }
 
 /* Parse the color name (or pair of color names) in the given string.
  * Return FALSE when any color name is invalid; otherwise return TRUE. */
-bool parse_color_names(char *combostr, short *fg, short *bg, bool *bright)
+bool parse_color_names(char *combostr, short *fg, short *bg, int *attributes)
 {
 	char *comma = strchr(combostr, ',');
+	bool bright;
+
+	*attributes = A_NORMAL;
 
 	if (comma != NULL) {
-		*bg = color_to_short(comma + 1, bright);
-		if (*bright) {
-			rcfile_error(N_("A background color cannot be bright"));
+		*bg = color_to_short(comma + 1, &bright);
+		if (bright) {
+			jot_error(N_("A background color cannot be bright"));
 			return FALSE;
 		}
 		if (*bg == BAD_COLOR)
@@ -633,9 +709,12 @@ bool parse_color_names(char *combostr, short *fg, short *bg, bool *bright)
 		*bg = USE_THE_DEFAULT;
 
 	if (comma != combostr) {
-		*fg = color_to_short(combostr, bright);
+		*fg = color_to_short(combostr, &bright);
 		if (*fg == BAD_COLOR)
 			return FALSE;
+
+		if (bright)
+			*attributes = A_BOLD;
 	} else
 		*fg = USE_THE_DEFAULT;
 
@@ -648,27 +727,21 @@ bool parse_color_names(char *combostr, short *fg, short *bg, bool *bright)
 void parse_colors(char *ptr, int rex_flags)
 {
 	short fg, bg;
-	bool bright;
+	int attributes;
 	char *item;
 
-	if (!opensyntax) {
-		rcfile_error(N_("A '%s' command requires a preceding 'syntax' command"),
-						"color");
-		return;
-	}
-
 	if (*ptr == '\0') {
-		rcfile_error(N_("Missing color name"));
+		jot_error(N_("Missing color name"));
 		return;
 	}
 
 	item = ptr;
 	ptr = parse_next_word(ptr);
-	if (!parse_color_names(item, &fg, &bg, &bright))
+	if (!parse_color_names(item, &fg, &bg, &attributes))
 		return;
 
 	if (*ptr == '\0') {
-		rcfile_error(N_("Missing regex string after '%s' command"), "color");
+		jot_error(N_("Missing regex string after '%s' command"), "color");
 		return;
 	}
 
@@ -688,7 +761,7 @@ void parse_colors(char *ptr, int rex_flags)
 		}
 
 		if (*ptr != '"') {
-			rcfile_error(N_("Regex strings must begin and end with a \" character"));
+			jot_error(N_("Regex strings must begin and end with a \" character"));
 			ptr = parse_next_regex(ptr);
 			continue;
 		}
@@ -699,27 +772,21 @@ void parse_colors(char *ptr, int rex_flags)
 			break;
 
 		if (*item == '\0') {
-			rcfile_error(N_("Empty regex string"));
+			jot_error(N_("Empty regex string"));
 			goodstart = FALSE;
-		} else
-			goodstart = nregcomp(item, rex_flags);
-
-		/* If the starting regex is valid, initialize a new color struct,
-		 * and hook it in at the tail of the linked list. */
-		if (goodstart) {
+		} else {
 			newcolor = (colortype *)nmalloc(sizeof(colortype));
+			goodstart = compile(item, rex_flags, &newcolor->start);
+		}
 
+		/* If the start regex is valid, fill in the rest of the data, and
+		 * hook the new color struct in at the tail of the linked list. */
+		if (goodstart) {
 			newcolor->fg = fg;
 			newcolor->bg = bg;
-			newcolor->bright = bright;
-			newcolor->rex_flags = rex_flags;
+			newcolor->attributes = attributes;
 
-			newcolor->start_regex = mallocstrcpy(NULL, item);
-			newcolor->start = NULL;
-
-			newcolor->end_regex = NULL;
 			newcolor->end = NULL;
-
 			newcolor->next = NULL;
 
 			if (lastcolor == NULL)
@@ -728,19 +795,20 @@ void parse_colors(char *ptr, int rex_flags)
 				lastcolor->next = newcolor;
 
 			lastcolor = newcolor;
-		}
+		} else
+			free(newcolor);
 
 		if (!expectend)
 			continue;
 
 		if (ptr == NULL || strncasecmp(ptr, "end=", 4) != 0) {
-			rcfile_error(N_("\"start=\" requires a corresponding \"end=\""));
+			jot_error(N_("\"start=\" requires a corresponding \"end=\""));
 			return;
 		}
 
 		ptr += 4;
 		if (*ptr != '"') {
-			rcfile_error(N_("Regex strings must begin and end with a \" character"));
+			jot_error(N_("Regex strings must begin and end with a \" character"));
 			continue;
 		}
 
@@ -750,18 +818,16 @@ void parse_colors(char *ptr, int rex_flags)
 			break;
 
 		if (*item == '\0') {
-			rcfile_error(N_("Empty regex string"));
+			jot_error(N_("Empty regex string"));
 			continue;
 		}
 
-		/* If the start regex was invalid, skip past the end regex
-		 * to stay in sync. */
+		/* If the start regex was invalid, the end regex cannot be saved. */
 		if (!goodstart)
 			continue;
 
-		/* If it's valid, save the ending regex string. */
-		if (nregcomp(item, rex_flags))
-			newcolor->end_regex = mallocstrcpy(NULL, item);
+		/* Save the compiled ending regex (when it's valid). */
+		compile(item, rex_flags, &newcolor->end);
 
 		/* Lame way to skip another static counter. */
 		newcolor->id = live_syntax->nmultis;
@@ -774,7 +840,7 @@ colortype *parse_interface_color(char *combostr)
 {
 	colortype *trio = nmalloc(sizeof(colortype));
 
-	if (parse_color_names(combostr, &trio->fg, &trio->bg, &trio->bright)) {
+	if (parse_color_names(combostr, &trio->fg, &trio->bg, &trio->attributes)) {
 		free(combostr);
 		return trio;
 	} else {
@@ -791,20 +857,18 @@ void grab_and_store(const char *kind, char *ptr, regexlisttype **storage)
 	regexlisttype *lastthing;
 
 	if (!opensyntax) {
-		rcfile_error(
-				N_("A '%s' command requires a preceding 'syntax' command"), kind);
+		jot_error(N_("A '%s' command requires a preceding 'syntax' command"), kind);
 		return;
 	}
 
 	/* The default syntax doesn't take any file matching stuff. */
 	if (strcmp(live_syntax->name, "default") == 0 && *ptr != '\0') {
-		rcfile_error(
-				N_("The \"default\" syntax does not accept '%s' regexes"), kind);
+		jot_error(N_("The \"default\" syntax does not accept '%s' regexes"), kind);
 		return;
 	}
 
 	if (*ptr == '\0') {
-		rcfile_error(N_("Missing regex string after '%s' command"), kind);
+		jot_error(N_("Missing regex string after '%s' command"), kind);
 		return;
 	}
 
@@ -820,7 +884,7 @@ void grab_and_store(const char *kind, char *ptr, regexlisttype **storage)
 		regexlisttype *newthing;
 
 		if (*ptr != '"') {
-			rcfile_error(N_("Regex strings must begin and end with a \" character"));
+			jot_error(N_("Regex strings must begin and end with a \" character"));
 			return;
 		}
 
@@ -830,7 +894,7 @@ void grab_and_store(const char *kind, char *ptr, regexlisttype **storage)
 			return;
 
 		/* If the regex string is malformed, skip it. */
-		if (!nregcomp(regexstring, NANO_REG_EXTENDED | REG_NOSUB))
+		if (!compile(regexstring, NANO_REG_EXTENDED | REG_NOSUB, NULL))
 			continue;
 
 		/* Copy the regex into a struct, and hook this in at the end. */
@@ -847,17 +911,11 @@ void grab_and_store(const char *kind, char *ptr, regexlisttype **storage)
 	}
 }
 
-/* Gather and store the string after a comment/linter/formatter command. */
+/* Gather and store the string after a comment/linter command. */
 void pick_up_name(const char *kind, char *ptr, char **storage)
 {
-	if (!opensyntax) {
-		rcfile_error(
-				N_("A '%s' command requires a preceding 'syntax' command"), kind);
-		return;
-	}
-
 	if (*ptr == '\0') {
-		rcfile_error(N_("Missing argument after '%s'"), kind);
+		jot_error(N_("Missing argument after '%s'"), kind);
 		return;
 	}
 
@@ -867,7 +925,7 @@ void pick_up_name(const char *kind, char *ptr, char **storage)
 
 		while (*look != '"') {
 			if (--look == ptr) {
-				rcfile_error(N_("Argument of '%s' lacks closing \""), kind);
+				jot_error(N_("Argument of '%s' lacks closing \""), kind);
 				return;
 			}
 		}
@@ -878,25 +936,45 @@ void pick_up_name(const char *kind, char *ptr, char **storage)
 
 	*storage = mallocstrcpy(*storage, ptr);
 }
+
+/* Handle the four syntax-only commands. */
+bool parse_syntax_commands(char *keyword, char *ptr)
+{
+	if (strcasecmp(keyword, "color") == 0)
+		parse_colors(ptr, NANO_REG_EXTENDED);
+	else if (strcasecmp(keyword, "icolor") == 0)
+		parse_colors(ptr, NANO_REG_EXTENDED | REG_ICASE);
+	else if (strcasecmp(keyword, "comment") == 0) {
+#ifdef ENABLE_COMMENT
+		pick_up_name("comment", ptr, &live_syntax->comment);
+#endif
+	} else if (strcasecmp(keyword, "linter") == 0)
+		pick_up_name("linter", ptr, &live_syntax->linter);
+	else
+		return FALSE;
+
+	return TRUE;
+}
 #endif /* ENABLE_COLOR */
 
 /* Verify that the user has not unmapped every shortcut for a
  * function that we consider 'vital' (such as "Exit"). */
 static void check_vitals_mapped(void)
 {
-	subnfunc *f;
+	funcstruct *f;
 	int v;
-#define VITALS 5
-	void (*vitals[VITALS])(void) = { do_exit, do_exit, do_cancel, do_cancel, do_cancel };
-	int inmenus[VITALS] = { MMAIN, MHELP, MWHEREIS, MREPLACE, MGOTOLINE };
+#define VITALS 3
+	void (*vitals[VITALS])(void) = { do_exit, do_exit, do_cancel };
+	int inmenus[VITALS] = { MMAIN, MHELP, MYESNO };
 
 	for  (v = 0; v < VITALS; v++) {
 		for (f = allfuncs; f != NULL; f = f->next) {
 			if (f->func == vitals[v] && f->menus & inmenus[v]) {
-				const sc *s = first_sc_for(inmenus[v], f->func);
+				const keystruct *s = first_sc_for(inmenus[v], f->func);
 				if (!s) {
-					fprintf(stderr, _("Fatal error: no keys mapped for function "
-										"\"%s\".  Exiting.\n"), f->desc);
+					fprintf(stderr, _("No key is bound to function '%s' in "
+										"menu '%s'.  Exiting.\n"), f->desc,
+										menu_to_name(inmenus[v]));
 					fprintf(stderr, _("If needed, use nano with the -I option "
 										"to adjust your nanorc settings.\n"));
 					exit(1);
@@ -908,30 +986,35 @@ static void check_vitals_mapped(void)
 }
 
 /* Parse the rcfile, once it has been opened successfully at rcstream,
- * and close it afterwards.  If syntax_only is TRUE, allow the file to
+ * and close it afterwards.  If just_syntax is TRUE, allow the file to
  * to contain only color syntax commands. */
-void parse_rcfile(FILE *rcstream, bool syntax_only)
+void parse_rcfile(FILE *rcstream, bool just_syntax, bool intros_only)
 {
-	char *buf = NULL;
+	char *buffer = NULL;
 	ssize_t len;
-	size_t n = 0;
+	size_t size = 0;
 
-	while ((len = getline(&buf, &n, rcstream)) > 0) {
+	while ((len = getline(&buffer, &size, rcstream)) > 0) {
 		char *ptr, *keyword, *option;
 		int set = 0;
 		size_t i;
 
-		/* Ignore the newline. */
-		if (buf[len - 1] == '\n')
-			buf[len - 1] = '\0';
-
 		lineno++;
-		ptr = buf;
+
+#ifdef ENABLE_COLOR
+		/* If doing a full parse, skip to after the 'syntax' command. */
+		if (just_syntax && !intros_only && lineno <= live_syntax->lineno)
+			continue;
+#endif
+		/* Strip the terminating newline, if any. */
+		if (buffer[len - 1] == '\n')
+			buffer[len - 1] = '\0';
+
+		ptr = buffer;
 		while (isblank((unsigned char)*ptr))
 			ptr++;
 
-		/* If we have a blank line or a comment, skip to the next
-		 * line. */
+		/* If the line is empty or a comment, skip to next line. */
 		if (*ptr == '\0' || *ptr == '#')
 			continue;
 
@@ -941,9 +1024,12 @@ void parse_rcfile(FILE *rcstream, bool syntax_only)
 
 #ifdef ENABLE_COLOR
 		/* Handle extending first... */
-		if (strcasecmp(keyword, "extendsyntax") == 0) {
-			syntaxtype *sint;
+		if (!just_syntax && strcasecmp(keyword, "extendsyntax") == 0) {
+			augmentstruct *newitem, *extra;
 			char *syntaxname = ptr;
+			syntaxtype *sint;
+
+			check_for_nonempty_syntax();
 
 			ptr = parse_next_word(ptr);
 
@@ -952,61 +1038,67 @@ void parse_rcfile(FILE *rcstream, bool syntax_only)
 					break;
 
 			if (sint == NULL) {
-				rcfile_error(N_("Could not find syntax \"%s\" to extend"),
-								syntaxname);
-				opensyntax = FALSE;
+				jot_error(N_("Could not find syntax \"%s\" to extend"), syntaxname);
 				continue;
 			}
 
-			live_syntax = sint;
-			opensyntax = TRUE;
+			newitem = nmalloc(sizeof(augmentstruct));;
 
-			/* Refind the tail of the color list for this syntax. */
-			lastcolor = sint->color;
-			if (lastcolor != NULL)
-				while (lastcolor->next != NULL)
-					lastcolor = lastcolor->next;
+			/* Store the content of an 'extendsyntax', for later parsing. */
+			newitem->filename = strdup(nanorc);
+			newitem->lineno = lineno;
+			newitem->data = strdup(ptr);
+			newitem->next = NULL;
 
-			keyword = ptr;
-			ptr = parse_next_word(ptr);
+			if (sint->augmentations != NULL) {
+				extra = sint->augmentations;
+				while (extra->next != NULL)
+					extra = extra->next;
+				extra->next = newitem;
+			} else
+				sint->augmentations = newitem;
+
+			continue;
 		}
 
 		/* Try to parse the keyword. */
 		if (strcasecmp(keyword, "syntax") == 0) {
-			if (opensyntax && lastcolor == NULL)
-				rcfile_error(N_("Syntax \"%s\" has no color commands"),
-								live_syntax->name);
-			parse_syntax(ptr);
-		}
-		else if (strcasecmp(keyword, "header") == 0)
-			grab_and_store("header", ptr, &live_syntax->headers);
-		else if (strcasecmp(keyword, "magic") == 0)
+			if (intros_only) {
+				check_for_nonempty_syntax();
+				begin_new_syntax(ptr);
+			} else
+				break;
+		} else if (strcasecmp(keyword, "header") == 0) {
+			if (intros_only)
+				grab_and_store("header", ptr, &live_syntax->headers);
+		} else if (strcasecmp(keyword, "magic") == 0) {
 #ifdef HAVE_LIBMAGIC
-			grab_and_store("magic", ptr, &live_syntax->magics);
-#else
-			;
+			if (intros_only)
+				grab_and_store("magic", ptr, &live_syntax->magics);
 #endif
-		else if (strcasecmp(keyword, "comment") == 0)
-#ifdef ENABLE_COMMENT
-			pick_up_name("comment", ptr, &live_syntax->comment);
-#else
+		} else if (just_syntax && (strcasecmp(keyword, "set") == 0 ||
+								strcasecmp(keyword, "unset") == 0 ||
+								strcasecmp(keyword, "bind") == 0 ||
+								strcasecmp(keyword, "unbind") == 0 ||
+								strcasecmp(keyword, "include") == 0 ||
+								strcasecmp(keyword, "extendsyntax") == 0)) {
+			if (intros_only)
+				jot_error(N_("Command \"%s\" not allowed in included file"),
+									keyword);
+			else
+				break;
+		} else if (intros_only && (strcasecmp(keyword, "color") == 0 ||
+								strcasecmp(keyword, "icolor") == 0 ||
+								strcasecmp(keyword, "comment") == 0 ||
+								strcasecmp(keyword, "linter") == 0)) {
+			if (!opensyntax)
+				jot_error(N_("A '%s' command requires a preceding "
+									"'syntax' command"), keyword);
+			if (strcasestr("icolor", keyword))
+				seen_color_command = TRUE;
+			continue;
+		} else if (parse_syntax_commands(keyword, ptr))
 			;
-#endif
-		else if (strcasecmp(keyword, "color") == 0)
-			parse_colors(ptr, NANO_REG_EXTENDED);
-		else if (strcasecmp(keyword, "icolor") == 0)
-			parse_colors(ptr, NANO_REG_EXTENDED | REG_ICASE);
-		else if (strcasecmp(keyword, "linter") == 0)
-			pick_up_name("linter", ptr, &live_syntax->linter);
-		else if (strcasecmp(keyword, "formatter") == 0)
-#ifdef ENABLE_SPELLER
-			pick_up_name("formatter", ptr, &live_syntax->formatter);
-#else
-			;
-#endif
-		else if (syntax_only)
-			rcfile_error(N_("Command \"%s\" not allowed in included file"),
-										keyword);
 		else if (strcasecmp(keyword, "include") == 0)
 			parse_includes(ptr);
 		else
@@ -1019,60 +1111,50 @@ void parse_rcfile(FILE *rcstream, bool syntax_only)
 			parse_binding(ptr, TRUE);
 		else if (strcasecmp(keyword, "unbind") == 0)
 			parse_binding(ptr, FALSE);
-		else
-			rcfile_error(N_("Command \"%s\" not understood"), keyword);
-
-#ifdef ENABLE_COLOR
-		/* If a syntax was extended, it stops at the end of the command. */
-		if (live_syntax != syntaxes)
-			opensyntax = FALSE;
-#endif
+		else if (intros_only)
+			jot_error(N_("Command \"%s\" not understood"), keyword);
 
 		if (set == 0)
 			continue;
 
+		check_for_nonempty_syntax();
+
 		if (*ptr == '\0') {
-			rcfile_error(N_("Missing option"));
+			jot_error(N_("Missing option"));
 			continue;
 		}
 
 		option = ptr;
 		ptr = parse_next_word(ptr);
 
-		/* Find the just read name among the existing options. */
+		/* Find the just parsed option name among the existing names. */
 		for (i = 0; rcopts[i].name != NULL; i++) {
 			if (strcasecmp(option, rcopts[i].name) == 0)
 				break;
 		}
 
 		if (rcopts[i].name == NULL) {
-			rcfile_error(N_("Unknown option \"%s\""), option);
+			jot_error(N_("Unknown option \"%s\""), option);
 			continue;
 		}
 
-#ifdef DEBUG
-		fprintf(stderr, "    Option name = \"%s\"\n", rcopts[i].name);
-		fprintf(stderr, "    Flag = %ld\n", rcopts[i].flag);
-#endif
-		/* First handle unsetting. */
-		if (set == -1) {
-			if (rcopts[i].flag != 0)
-				UNSET(rcopts[i].flag);
+		/* If the option has a flag, set it or unset it, as requested. */
+		if (rcopts[i].flag) {
+			if (set == 1)
+				SET(rcopts[i].flag);
 			else
-				rcfile_error(N_("Cannot unset option \"%s\""), rcopts[i].name);
+				UNSET(rcopts[i].flag);
 			continue;
 		}
 
-		/* If the option has a flag, it doesn't take an argument. */
-		if (rcopts[i].flag != 0) {
-			SET(rcopts[i].flag);
+		/* An option that takes an argument cannot be unset. */
+		if (set == -1) {
+			jot_error(N_("Cannot unset option \"%s\""), rcopts[i].name);
 			continue;
 		}
 
-		/* The option doesn't have a flag, so it takes an argument. */
 		if (*ptr == '\0') {
-			rcfile_error(N_("Option \"%s\" requires an argument"),
-								rcopts[i].name);
+			jot_error(N_("Option \"%s\" requires an argument"), rcopts[i].name);
 			continue;
 		}
 
@@ -1082,20 +1164,21 @@ void parse_rcfile(FILE *rcstream, bool syntax_only)
 		ptr = parse_argument(ptr);
 
 		option = mallocstrcpy(NULL, option);
-#ifdef DEBUG
-		fprintf(stderr, "    Option argument = \"%s\"\n", option);
-#endif
-		/* Make sure the option argument is a valid multibyte string. */
-		if (!is_valid_mbstring(option)) {
-			rcfile_error(N_("Argument is not a valid multibyte string"));
+
+#ifdef ENABLE_UTF8
+		/* When in a UTF-8 locale, ignore arguments with invalid sequences. */
+		if (using_utf8() && mbstowcs(NULL, option, 0) == (size_t)-1) {
+			jot_error(N_("Argument is not a valid multibyte string"));
 			continue;
 		}
-
+#endif
 #ifdef ENABLE_COLOR
 		if (strcasecmp(rcopts[i].name, "titlecolor") == 0)
 			color_combo[TITLE_BAR] = parse_interface_color(option);
 		else if (strcasecmp(rcopts[i].name, "numbercolor") == 0)
 			color_combo[LINE_NUMBER] = parse_interface_color(option);
+		else if (strcasecmp(rcopts[i].name, "stripecolor") == 0)
+			color_combo[GUIDE_STRIPE] = parse_interface_color(option);
 		else if (strcasecmp(rcopts[i].name, "selectedcolor") == 0)
 			color_combo[SELECTED_TEXT] = parse_interface_color(option);
 		else if (strcasecmp(rcopts[i].name, "statuscolor") == 0)
@@ -1115,46 +1198,50 @@ void parse_rcfile(FILE *rcstream, bool syntax_only)
 #endif
 #ifdef ENABLED_WRAPORJUSTIFY
 		if (strcasecmp(rcopts[i].name, "fill") == 0) {
-			if (!parse_num(option, &wrap_at)) {
-				rcfile_error(N_("Requested fill size \"%s\" is invalid"),
-								option);
-				wrap_at = -CHARS_FROM_EOL;
-			} else
-				UNSET(NO_WRAP);
+			if (!parse_num(option, &fill)) {
+				jot_error(N_("Requested fill size \"%s\" is invalid"), option);
+				fill = -COLUMNS_FROM_EOL;
+			}
 			free(option);
 		} else
 #endif
 #ifndef NANO_TINY
-		if (strcasecmp(rcopts[i].name, "matchbrackets") == 0) {
-			matchbrackets = option;
-			if (has_blank_mbchars(matchbrackets)) {
-				rcfile_error(N_("Non-blank characters required"));
-				free(matchbrackets);
-				matchbrackets = NULL;
+		if (strcasecmp(rcopts[i].name, "guidestripe") == 0) {
+			if (!parse_num(option, &stripe_column) || stripe_column <= 0) {
+				jot_error(N_("Guide column \"%s\" is invalid"), option);
+				stripe_column = 0;
 			}
+			free(option);
+		} else if (strcasecmp(rcopts[i].name, "matchbrackets") == 0) {
+			if (has_blank_char(option)) {
+				jot_error(N_("Non-blank characters required"));
+				free(option);
+			} else if (mbstrlen(option) % 2 != 0) {
+				jot_error(N_("Even number of characters required"));
+				free(option);
+			} else
+				matchbrackets = option;
 		} else if (strcasecmp(rcopts[i].name, "whitespace") == 0) {
-			whitespace = option;
-			if (mbstrlen(whitespace) != 2 || strlenpt(whitespace) != 2) {
-				rcfile_error(N_("Two single-column characters required"));
-				free(whitespace);
-				whitespace = NULL;
+			if (mbstrlen(option) != 2 || breadth(option) != 2) {
+				jot_error(N_("Two single-column characters required"));
+				free(option);
 			} else {
-				whitespace_len[0] = parse_mbchar(whitespace, NULL, NULL);
-				whitespace_len[1] = parse_mbchar(whitespace +
-										whitespace_len[0], NULL, NULL);
+				whitespace = option;
+				whitelen[0] = char_length(whitespace);
+				whitelen[1] = char_length(whitespace + whitelen[0]);
 			}
 		} else
 #endif
 #ifdef ENABLE_JUSTIFY
 		if (strcasecmp(rcopts[i].name, "punct") == 0) {
-			if (has_blank_mbchars(option)) {
-				rcfile_error(N_("Non-blank characters required"));
+			if (has_blank_char(option)) {
+				jot_error(N_("Non-blank characters required"));
 				free(option);
 			} else
 				punct = option;
 		} else if (strcasecmp(rcopts[i].name, "brackets") == 0) {
-			if (has_blank_mbchars(option)) {
-				rcfile_error(N_("Non-blank characters required"));
+			if (has_blank_char(option)) {
+				jot_error(N_("Non-blank characters required"));
 				free(option);
 			} else
 				brackets = option;
@@ -1177,24 +1264,18 @@ void parse_rcfile(FILE *rcstream, bool syntax_only)
 #endif
 		if (strcasecmp(rcopts[i].name, "tabsize") == 0) {
 			if (!parse_num(option, &tabsize) || tabsize <= 0) {
-				rcfile_error(N_("Requested tab size \"%s\" is invalid"),
-								option);
+				jot_error(N_("Requested tab size \"%s\" is invalid"), option);
 				tabsize = -1;
 			}
 			free(option);
 		}
 	}
 
-#ifdef ENABLE_COLOR
-	if (opensyntax && lastcolor == NULL)
-		rcfile_error(N_("Syntax \"%s\" has no color commands"),
-						live_syntax->name);
+	if (intros_only)
+		check_for_nonempty_syntax();
 
-	opensyntax = FALSE;
-#endif
-
-	free(buf);
 	fclose(rcstream);
+	free(buffer);
 	lineno = 0;
 
 	return;
@@ -1203,23 +1284,14 @@ void parse_rcfile(FILE *rcstream, bool syntax_only)
 /* Read and interpret one of the two nanorc files. */
 void parse_one_nanorc(void)
 {
-	FILE *rcstream;
-
-	/* Don't try to open directories nor devices. */
-	if (!is_good_file(nanorc))
-		return;
-
-#ifdef DEBUG
-	fprintf(stderr, "Going to parse file \"%s\"\n", nanorc);
-#endif
-	rcstream = fopen(nanorc, "rb");
+	FILE *rcstream = fopen(nanorc, "rb");
 
 	/* If opening the file succeeded, parse it.  Otherwise, only
 	 * complain if the file actually exists. */
 	if (rcstream != NULL)
-		parse_rcfile(rcstream, FALSE);
+		parse_rcfile(rcstream, FALSE, TRUE);
 	else if (errno != ENOENT)
-		rcfile_error(N_("Error reading %s: %s"), nanorc, strerror(errno));
+		jot_error(N_("Error reading %s: %s"), nanorc, strerror(errno));
 }
 
 bool have_nanorc(const char *path, char *name)
@@ -1238,31 +1310,22 @@ void do_rcfiles(void)
 {
 	const char *xdgconfdir;
 
+	/* First process the system-wide nanorc, if it exists and is suitable. */
 	nanorc = mallocstrcpy(nanorc, SYSCONFDIR "/nanorc");
-
-	/* Process the system-wide nanorc. */
-	parse_one_nanorc();
-
-	/* When configured with --disable-wrapping-as-root, turn wrapping off
-	 * for root, so that only root's .nanorc or --fill can turn it on. */
-#ifdef DISABLE_ROOTWRAPPING
-	if (geteuid() == NANO_ROOT_UID)
-		SET(NO_WRAP);
-#endif
+	if (is_good_file(nanorc))
+		parse_one_nanorc();
 
 	get_homedir();
 	xdgconfdir = getenv("XDG_CONFIG_HOME");
 
-	/* Now try the to find a nanorc file in the user's home directory
-	 * or in the XDG configuration directories. */
-	if (have_nanorc(homedir, "/" HOME_RC_NAME))
-		parse_one_nanorc();
-	else if (have_nanorc(xdgconfdir, "/nano/" RCFILE_NAME))
-		parse_one_nanorc();
-	else if (have_nanorc(homedir, "/.config/nano/" RCFILE_NAME))
+	/* Now try the to find a nanorc file in the user's home directory or in
+	 * the XDG configuration directories, and process the first one found. */
+	if (have_nanorc(homedir, "/" HOME_RC_NAME) ||
+				have_nanorc(xdgconfdir, "/nano/" RCFILE_NAME) ||
+				have_nanorc(homedir, "/.config/nano/" RCFILE_NAME))
 		parse_one_nanorc();
 	else if (homedir == NULL && xdgconfdir == NULL)
-		rcfile_error(N_("I can't find my home directory!  Wah!"));
+		jot_error(N_("I can't find my home directory!  Wah!"));
 
 	check_vitals_mapped();
 

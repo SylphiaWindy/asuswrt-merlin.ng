@@ -25,7 +25,7 @@
 /* DEBUG FUNCTION */
 #define BWDPI_DBG(fmt,args...) \
 	if(f_exists(BWDPI_DEBUG) > 0) { \
-		dbg("[BWDPI][%s:(%d)]"fmt, __FUNCTION__, __LINE__, ##args); \
+		printf("[BWDPI][%s:(%d)]"fmt, __FUNCTION__, __LINE__, ##args); \
 	}
 
 #define BWSIG_DBG(fmt,args...) \
@@ -81,6 +81,13 @@
 #define WAN_TMP         "/tmp/bwdpi/dev_wan"
 #define QOS_TMP         "/tmp/bwdpi/qos_rul"
 
+// node
+#if defined(RTCONFIG_HND_ROUTER_AX)
+#define DEVNODE         "/dev/idp"
+#else
+#define DEVNODE         "/dev/detector"
+#endif
+
 // database hidden path and function path
 #define BWDPI_DB_DIR    "/jffs/.sys"
 #define BWDPI_ANA_DIR   BWDPI_DB_DIR"/TrafficAnalyzer"
@@ -117,8 +124,8 @@ extern void setup_vp_conf();
 
 //stat.c
 extern int stat_main(char *mode, char *name, char *dura, char *date);
-extern int device_main(char *MAC);
-extern int device_info_main(char *MAC);
+extern int device_main();
+extern int device_info_main(char *MAC, char *ipaddr);
 extern int wrs_url_main();
 extern int get_anomaly_main(char *cmd);
 extern int get_app_patrol_main();

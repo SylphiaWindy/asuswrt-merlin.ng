@@ -46,7 +46,6 @@
 #include "lladdr.h"
 #include "ping.h"
 #include "mstats.h"
-#include "status.h"
 #include "ssl_verify.h"
 #include "tls_crypt.h"
 #include "forward-inline.h"
@@ -614,6 +613,31 @@ uninit_proxy(struct context *c)
     uninit_proxy_dowork(c);
 }
 
+/*
+ * Saves the initial state of NCP-regotiable
+ * options into a storage which persists over SIGUSR1.
+ */
+static void
+save_ncp_options(struct context *c)
+{
+#ifdef ENABLE_CRYPTO
+    c->c1.ciphername = c->options.ciphername;
+    c->c1.authname = c->options.authname;
+    c->c1.keysize = c->options.keysize;
+#endif
+}
+
+/* Restores NCP-negotiable options to original values */
+static void
+restore_ncp_options(struct context *c)
+{
+#ifdef ENABLE_CRYPTO
+    c->options.ciphername = c->c1.ciphername;
+    c->options.authname = c->c1.authname;
+    c->options.keysize = c->c1.keysize;
+#endif
+}
+
 void
 context_init_1(struct context *c)
 {
@@ -622,6 +646,8 @@ context_init_1(struct context *c)
     packet_id_persist_init(&c->c1.pid_persist);
 
     init_connection_list(c);
+
+    save_ncp_options(c);
 
 #if defined(ENABLE_PKCS11)
     if (c->first_time)
@@ -1018,6 +1044,7 @@ print_openssl_info(const struct options *options)
         if (options->show_tls_ciphers)
         {
             show_available_tls_ciphers(options->cipher_list,
+                                       options->cipher_list_tls13,
                                        options->tls_cert_profile);
         }
         if (options->show_curves)
@@ -1522,13 +1549,13 @@ initialization_sequence_completed(struct context *c, const unsigned int flags)
         msg(M_INFO, "%s", message);
     }
 
-    update_nvram_status(RUNNING);        //Sam, 2013/10/31
-
     /* Flag that we initialized */
     if ((flags & (ISC_ERRORS|ISC_SERVER)) == 0)
     {
         c->options.no_advance = true;
     }
+
+    update_nvram_status(0);
 
 #ifdef _WIN32
     fork_register_dns_action(c->c1.tuntap);
@@ -1696,6 +1723,9 @@ do_open_tun(struct context *c)
     if (c->c1.tuntap)
     {
         oldtunfd = c->c1.tuntap->fd;
+        free(c->c1.tuntap);
+        c->c1.tuntap = NULL;
+        c->c1.tuntap_owned = false;
     }
 #endif
 
@@ -2610,10 +2640,6 @@ do_init_crypto_tls_c1(struct context *c)
                                options->tls_crypt_inline, options->tls_server);
         }
 
-        c->c1.ciphername = options->ciphername;
-        c->c1.authname = options->authname;
-        c->c1.keysize = options->keysize;
-
 #if 0 /* was: #if ENABLE_INLINE_FILES --  Note that enabling this code will break restarts */
         if (options->priv_key_file_inline)
         {
@@ -2625,11 +2651,6 @@ do_init_crypto_tls_c1(struct context *c)
     else
     {
         msg(D_INIT_MEDIUM, "Re-using SSL/TLS context");
-
-        /* Restore pre-NCP cipher options */
-        c->options.ciphername = c->c1.ciphername;
-        c->options.authname = c->c1.authname;
-        c->options.keysize = c->c1.keysize;
     }
 }
 
@@ -3864,7 +3885,7 @@ init_management_callback_p2p(struct context *c)
 #ifdef ENABLE_MANAGEMENT
 
 void
-init_management(struct context *c)
+init_management(void)
 {
     if (!management)
     {
@@ -4319,6 +4340,8 @@ close_instance(struct context *c)
 
         /* free key schedules */
         do_close_free_key_schedule(c, (c->mode == CM_P2P || c->mode == CM_TOP));
+
+        restore_ncp_options(c);
 
         /* close TCP/UDP connection */
         do_close_link_socket(c);

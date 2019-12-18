@@ -1,5 +1,5 @@
 # DO NOT EDIT! GENERATED AUTOMATICALLY!
-# Copyright (C) 2002-2018 Free Software Foundation, Inc.
+# Copyright (C) 2002-2019 Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -64,6 +64,7 @@ AC_DEFUN([gl_EARLY],
   # Code from module flexmember:
   # Code from module float:
   # Code from module fnmatch:
+  # Code from module fnmatch-h:
   # Code from module fpieee:
   AC_REQUIRE([gl_FP_IEEE])
   # Code from module fpucw:
@@ -80,9 +81,9 @@ AC_DEFUN([gl_EARLY],
   # Code from module gettime:
   # Code from module gettimeofday:
   # Code from module glob:
+  # Code from module glob-h:
   # Code from module hard-locale:
   # Code from module havelib:
-  # Code from module host-cpu-c-abi:
   # Code from module include_next:
   # Code from module intprops:
   # Code from module isblank:
@@ -141,9 +142,7 @@ AC_DEFUN([gl_EARLY],
   # Code from module std-gnu11:
   # Code from module stdarg:
   dnl Some compilers (e.g., AIX 5.3 cc) need to be in c99 mode
-  dnl for the builtin va_copy to work.  With Autoconf 2.60 or later,
-  dnl gl_PROG_CC_C99 arranges for this.  With older Autoconf gl_PROG_CC_C99
-  dnl shouldn't hurt, though installers are on their own to set c99 mode.
+  dnl for the builtin va_copy to work.  gl_PROG_CC_C99 arranges for this.
   gl_PROG_CC_C99
   # Code from module stdbool:
   # Code from module stddef:
@@ -180,6 +179,10 @@ AC_DEFUN([gl_EARLY],
   # Code from module wcrtomb:
   # Code from module wctype-h:
   # Code from module wcwidth:
+  # Code from module windows-mutex:
+  # Code from module windows-once:
+  # Code from module windows-recmutex:
+  # Code from module windows-rwlock:
   # Code from module xalloc-oversized:
   # Code from module xsize:
 ])
@@ -236,10 +239,12 @@ AC_DEFUN([gl_INIT],
     AC_LIBOBJ([itold])
   fi
   gl_FUNC_FNMATCH_POSIX
-  if test -n "$FNMATCH_H"; then
+  if test $HAVE_FNMATCH = 0 || test $REPLACE_FNMATCH = 1; then
     AC_LIBOBJ([fnmatch])
     gl_PREREQ_FNMATCH
   fi
+  gl_FNMATCH_MODULE_INDICATOR([fnmatch])
+  gl_FNMATCH_H
   gl_FUNC_FREXP_NO_LIBM
   if test $gl_func_frexp_no_libm != yes; then
     AC_LIBOBJ([frexp])
@@ -307,14 +312,16 @@ AC_DEFUN([gl_INIT],
   fi
   gl_SYS_TIME_MODULE_INDICATOR([gettimeofday])
   gl_GLOB
-  if test $REPLACE_GLOB = 1; then
+  if test $HAVE_GLOB = 0 || test $REPLACE_GLOB = 1; then
     AC_LIBOBJ([glob])
-    AC_LIBOBJ([glob_pattern_p])
     AC_LIBOBJ([globfree])
     gl_PREREQ_GLOB
   fi
-  gl_HARD_LOCALE
-  AC_REQUIRE([gl_HOST_CPU_C_ABI])
+  if test $HAVE_GLOB_PATTERN_P = 0 || test $REPLACE_GLOB_PATTERN_P = 1; then
+    AC_LIBOBJ([glob_pattern_p])
+  fi
+  gl_GLOB_MODULE_INDICATOR([glob])
+  gl_GLOB_H
   gl_FUNC_ISBLANK
   if test $HAVE_ISBLANK = 0; then
     AC_LIBOBJ([isblank])
@@ -396,7 +403,7 @@ AC_DEFUN([gl_INIT],
   fi
   gl_WCHAR_MODULE_INDICATOR([mbsrtowcs])
   gl_FUNC_MBTOWC
-  if test $REPLACE_MBTOWC = 1; then
+  if test $HAVE_MBTOWC = 0 || test $REPLACE_MBTOWC = 1; then
     AC_LIBOBJ([mbtowc])
     gl_PREREQ_MBTOWC
   fi
@@ -529,7 +536,7 @@ AC_DEFUN([gl_INIT],
   AC_PROG_MKDIR_P
   gl_SYS_WAIT_H
   AC_PROG_MKDIR_P
-  gl_THREADLIB
+  AC_REQUIRE([gl_THREADLIB])
   gl_HEADER_TIME_H
   gl_TIMESPEC
   gl_UNISTD_H
@@ -559,8 +566,33 @@ AC_DEFUN([gl_INIT],
   gl_FUNC_WCWIDTH
   if test $HAVE_WCWIDTH = 0 || test $REPLACE_WCWIDTH = 1; then
     AC_LIBOBJ([wcwidth])
+    gl_PREREQ_WCWIDTH
   fi
   gl_WCHAR_MODULE_INDICATOR([wcwidth])
+  AC_REQUIRE([AC_CANONICAL_HOST])
+  case "$host_os" in
+    mingw*)
+      AC_LIBOBJ([windows-mutex])
+      ;;
+  esac
+  AC_REQUIRE([AC_CANONICAL_HOST])
+  case "$host_os" in
+    mingw*)
+      AC_LIBOBJ([windows-once])
+      ;;
+  esac
+  AC_REQUIRE([AC_CANONICAL_HOST])
+  case "$host_os" in
+    mingw*)
+      AC_LIBOBJ([windows-recmutex])
+      ;;
+  esac
+  AC_REQUIRE([AC_CANONICAL_HOST])
+  case "$host_os" in
+    mingw*)
+      AC_LIBOBJ([windows-rwlock])
+      ;;
+  esac
   gl_XSIZE
   # End of code from modules
   m4_ifval(gl_LIBSOURCES_LIST, [
@@ -880,6 +912,15 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/wctype-h.c
   lib/wctype.in.h
   lib/wcwidth.c
+  lib/windows-initguard.h
+  lib/windows-mutex.c
+  lib/windows-mutex.h
+  lib/windows-once.c
+  lib/windows-once.h
+  lib/windows-recmutex.c
+  lib/windows-recmutex.h
+  lib/windows-rwlock.c
+  lib/windows-rwlock.h
   lib/xalloc-oversized.h
   lib/xsize.c
   lib/xsize.h
@@ -887,7 +928,6 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/__inline.m4
   m4/absolute-header.m4
   m4/alloca.m4
-  m4/asm-underscore.m4
   m4/btowc.m4
   m4/builtin-expect.m4
   m4/clock_time.m4
@@ -909,6 +949,7 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/flexmember.m4
   m4/float_h.m4
   m4/fnmatch.m4
+  m4/fnmatch_h.m4
   m4/fpieee.m4
   m4/frexp.m4
   m4/frexpl.m4
@@ -923,8 +964,8 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/gettimeofday.m4
   m4/glibc21.m4
   m4/glob.m4
+  m4/glob_h.m4
   m4/gnulib-common.m4
-  m4/hard-locale.m4
   m4/host-cpu-c-abi.m4
   m4/include_next.m4
   m4/intmax_t.m4

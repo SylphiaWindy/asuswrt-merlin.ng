@@ -109,7 +109,7 @@ function show_leases() {
 </script>
 </head>
 
-<body onload="initial();">
+<body onload="initial();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 
@@ -146,8 +146,9 @@ function show_leases() {
 									<td valign="top">
 										<div>&nbsp;</div>
 										<div class="formfonttitle"><#System_Log#> - <#menu5_7_3#></div>
-										<div style="margin-lease:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+										<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 										<div class="formfontdesc"><#DHCPlease_title#></div>
+										<div class="formfontdesc">Click on a column header to sort by that field.</div>
 
                                                                                 <div style="margin-top:8px">
 											<div id="leaseblock"></div>

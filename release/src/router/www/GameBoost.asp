@@ -16,6 +16,8 @@
 <script type="text/javascript" src="/help.js"></script>
 <script type="text/javascript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="/form.js"></script>
+<script type="text/javascript" src="/js/httpApi.js"></script>
+<script language="JavaScript" type="text/javascript" src="/js/asus_eula.js"></script>
 <style>
 body{
 	margin: 0;
@@ -98,23 +100,25 @@ function initial(){
 		document.getElementById("game_boost_enable").checked = false;
 	}
 
+	if(!ASUS_EULA.status("tm"))
+		ASUS_EULA.config(eula_confirm, cancel);
 }
 
 function sign_eula(){
-	if(document.form.TM_EULA.value == 0){
-		show_tm_eula();
+	if(document.getElementById("game_boost_enable").checked){
+		if(!reset_wan_to_fo.check_status()) {
+			document.getElementById("game_boost_enable").checked = false;
+			return false;
+		}
 	}
-	else{
+
+	if(ASUS_EULA.check("tm")){
 		check_game_boost();
 	}
 }
 
 function check_game_boost(){
 	if(document.getElementById("game_boost_enable").checked){
-		if(!reset_wan_to_fo(document.form, 1)) {
-			document.getElementById("game_boost_enable").checked = false;
-			return false;
-		}
 		document.form.qos_enable.value = '1';
 		document.form.qos_type.value = '1';
 		document.form.bwdpi_app_rulelist.disabled = false;
@@ -141,20 +145,10 @@ function check_game_boost(){
 		}
 	}
 
+	if(reset_wan_to_fo.change_status)
+		reset_wan_to_fo.change_wan_mode(document.form);
+
 	document.form.submit();
-}
-
-function show_tm_eula(){
-	$.get("tm_eula.htm", function(data){
-		document.getElementById('agreement_panel').innerHTML= data;
-		var url = "https://www.asus.com/Microsite/networks/Trend_Micro_EULA/";
-		$("#eula_url").attr("href",url);
-		adjust_TM_eula_height("agreement_panel");
-	});
-
-	dr_advise();
-	cal_panel_block("agreement_panel", 0.25);
-	$("#agreement_panel").fadeIn(300);
 }
 
 function eula_confirm(){
@@ -171,7 +165,6 @@ function cancel(){
 <body onload="initial();" onunload="unload_body();">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
-<div id="agreement_panel" class="eula_panel_container"></div>
 <div id="hiddenMask" class="popup_bg" style="z-index:999;">
 	<table cellpadding="5" cellspacing="0" id="dr_sweet_advise" class="dr_sweet_advise" align="center"></table>
 	<!--[if lte IE 6.5.]><script>alert("<#ALERT_TO_CHANGE_BROWSER#>");</script><![endif]-->

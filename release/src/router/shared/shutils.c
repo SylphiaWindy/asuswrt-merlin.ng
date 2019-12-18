@@ -41,6 +41,7 @@
 #include <assert.h>
 #include <sys/sysinfo.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <syslog.h>
 #include <typedefs.h>
 #include <wlioctl.h>
@@ -245,15 +246,12 @@ int _eval(char *const argv[], const char *path, int timeout, int *ppid)
 	sighandler_t chld = SIG_IGN;
 	pid_t pid, w;
 	int status = 0;
-	int fd;
-	int flags;
-	int sig;
-	int n;
-	const char *p;
-	char s[256];
-	int debug_logeval = atoi(nvram_safe_get("debug_logeval"));
-	//char *cpu0_argv[32] = { "taskset", "-c", "0"};
-	//char *cpu1_argv[32] = { "taskset", "-c", "1"};
+	int fd, flags, sig, n;
+	char s[256], *p;
+#if 0
+	char *cpu = "0";
+	char *cpu_argv[32] = { "taskset", "-c", cpu, NULL};
+#endif
 
 	if (!ppid) {
 		// block SIGCHLD
@@ -267,7 +265,9 @@ int _eval(char *const argv[], const char *path, int timeout, int *ppid)
 #ifdef HND_ROUTER
 	p = nvram_safe_get("env_path");
 	snprintf(s, sizeof(s), "%s%s/sbin:/bin:/usr/sbin:/usr/bin:/opt/sbin:/opt/bin", *p ? p : "", *p ? ":" : "");
-	setenv("PATH", s, 1);
+	p = getenv("PATH");
+	if (p == NULL || strcmp(p, s) != 0)
+		setenv("PATH", s, 1);
 #endif
 	pid = fork();
 	if (pid == -1) {
@@ -303,43 +303,22 @@ EXIT:
 
 	// child
 
+	setsid();
+
 	// reset signal handlers
-	for (sig = 0; sig < (_NSIG - 1); sig++)
+	for (sig = 1; sig < _NSIG; sig++)
 		signal(sig, SIG_DFL);
 
 	// unblock signals if called from signal handler
 	sigemptyset(&set);
 	sigprocmask(SIG_SETMASK, &set, NULL);
 
-	setsid();
-
-	close(STDIN_FILENO);
-	close(STDOUT_FILENO);
-	close(STDERR_FILENO);
-	open("/dev/null", O_RDONLY);
-	open("/dev/null", O_WRONLY);
-	open("/dev/null", O_WRONLY);
-
-	if (debug_logeval == 1) {
-		pid = getpid();
-
-		cprintf("_eval +%ld pid=%d ", uptime(), pid);
-		for (n = 0; argv[n]; ++n) cprintf("%s ", argv[n]);
-		cprintf("\n");
-
-		if ((fd = open("/dev/console", O_RDWR | O_NONBLOCK)) >= 0) {
-			dup2(fd, STDIN_FILENO);
-			dup2(fd, STDOUT_FILENO);
-			dup2(fd, STDERR_FILENO);
-		}
-		else {
-			sprintf(s, "/tmp/eval.%d", pid);
-			if ((fd = open(s, O_CREAT | O_RDWR | O_NONBLOCK, 0600)) >= 0) {
-				dup2(fd, STDOUT_FILENO);
-				dup2(fd, STDERR_FILENO);
-			}
-		}
-		if (fd > STDERR_FILENO) close(fd);
+	if ((fd = open("/dev/null", O_RDWR)) >= 0) {
+		dup2(fd, STDIN_FILENO);
+		dup2(fd, STDOUT_FILENO);
+		dup2(fd, STDERR_FILENO);
+		if (fd > STDERR_FILENO)
+			close(fd);
 	}
 
 	// Redirect stdout & stderr to <path>
@@ -360,11 +339,30 @@ EXIT:
 
 		if ((fd = open(path, flags, 0644)) < 0) {
 			perror(path);
-		}
-		else {
+		} else {
 			dup2(fd, STDOUT_FILENO);
 			dup2(fd, STDERR_FILENO);
-			close(fd);
+			if (fd > STDERR_FILENO)
+				close(fd);
+		}
+	} else if (nvram_get_int("debug_logeval")) {
+		pid = getpid();
+
+		if ((fd = open("/dev/console", O_RDWR | O_NONBLOCK)) < 0) {
+			sprintf(s, "/tmp/eval.%d", pid);
+			fd = open(s, O_CREAT | O_RDWR | O_NONBLOCK, 0600);
+		} else
+			dup2(fd, STDIN_FILENO);
+
+		if (fd >= 0) {
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+			if (fd > STDERR_FILENO)
+				close(fd);
+
+			printf("_eval +%ld pid=%d ", uptime(), getpid());
+			for (n = 0; argv[n]; n++) printf("%s ", argv[n]);
+			printf("\n");
 		}
 	}
 
@@ -372,28 +370,22 @@ EXIT:
 #ifndef HND_ROUTER
 	p = nvram_safe_get("env_path");
 	snprintf(s, sizeof(s), "%s%s/sbin:/bin:/usr/sbin:/usr/bin:/opt/sbin:/opt/bin", *p ? p : "", *p ? ":" : "");
-	setenv("PATH", s, 1);
+	p = getenv("PATH");
+	if (p == NULL || strcmp(p, s) != 0)
+		setenv("PATH", s, 1);
 #endif
 
 	alarm(timeout);
+
 #if 1
 	execvp(argv[0], argv);
+#else
+	for (n = 0; argv[n]; n++) {
+		cpu_argv[n+3] = argv[n];
+	execvp(cpu_argv[0], cpu_argv);
+#endif
 
 	perror(argv[0]);
-#elif 0
-	for(n = 0; argv[n]; ++n)
-		cpu0_argv[n+3] = argv[n];
-	execvp(cpu0_argv[0], cpu0_argv);
-
-	perror(cpu0_argv[0]);
-#else
-	for(n = 0; argv[n]; ++n)
-		cpu1_argv[n+3] = argv[n];
-	execvp(cpu1_argv[0], cpu1_argv);
-
-	perror(cpu1_argv[0]);
-
-#endif
 
 	_exit(errno);
 }
@@ -422,16 +414,16 @@ int _cpu_eval(int *ppid, char *cmds[])
 #if defined (SMP) || defined(RTCONFIG_ALPINE) || defined(RTCONFIG_LANTIQ)
         cpucmd[ncmds++]="taskset";
         cpucmd[ncmds++]="-c";
-        if(!strcmp(cmds[n], CPU0) || !strcmp(cmds[n], CPU1)) {
+	if(!strcmp(cmds[n], CPU0) || !strcmp(cmds[n], CPU1) || !strcmp(cmds[n], CPU2) || !strcmp(cmds[n], CPU3))
                 cpucmd[ncmds++]=cmds[n++];
-        } else
+        else
 #if defined(RTCONFIG_ALPINE) || defined(RTCONFIG_LANTIQ)
                 cpucmd[ncmds++]=cmds[n++];;
 #else
                 cpucmd[ncmds++]=CPU0;
 #endif
 #else
-        if(strcmp(cmds[n], CPU0) && strcmp(cmds[n], CPU1))
+	if(strcmp(cmds[n], CPU0) && strcmp(cmds[n], CPU1) && strcmp(cmds[n], CPU2) && strcmp(cmds[n], CPU3))
                 cpucmd[ncmds++]=cmds[n++];
         else
                 n++;
@@ -628,10 +620,6 @@ void cprintf(const char *format, ...)
 	FILE *f;
 	int nfd;
 	va_list args;
-#ifdef RTCONFIG_NVRAM_FILE
-	int debug_cprintf = 1;
-	int debug_cprintf_file = 0;
-#endif
 
 #if defined(DEBUG_NOISY) && !defined(HND_ROUTER)
 	{
@@ -644,29 +632,21 @@ void cprintf(const char *format, ...)
 		return;
 	{
 #else
-#ifdef RTCONFIG_NVRAM_FILE
-	if ( debug_cprintf == 1 ) {
-#else
 	if (nvram_match("debug_cprintf", "1")) {
 #endif
 #endif
-#endif
-		if((nfd = open("/dev/console", O_WRONLY | O_NONBLOCK)) > 0){
+		if((nfd = open("/dev/console", O_WRONLY | O_NONBLOCK)) >= 0){
 			if((f = fdopen(nfd, "w")) != NULL){
 				va_start(args, format);
 				vfprintf(f, format, args);
 				va_end(args);
 				fclose(f);
-			}
-			close(nfd);
+			} else
+				close(nfd);
 		}
 	}
 #if 1
-#ifdef RTCONFIG_NVRAM_FILE
-	if (debug_cprintf_file == 1) {
-#else
 	if (nvram_match("debug_cprintf_file", "1")) {
-#endif
 //		char s[32];
 //		sprintf(s, "/tmp/cprintf.%d", getpid());
 //		if ((f = fopen(s, "a")) != NULL) {
@@ -1755,7 +1735,11 @@ int doSystem(char *fmt, ...)
 	va_end(vargs);
 
 	if(cmd) {
-		if (!strncmp(cmd, "iwpriv", 6))
+		if (!strncmp(cmd, "iwpriv", 6)
+#if defined(RTCONFIG_CFG80211)
+		    || !strncmp(cmd, "cfg80211tool", 12)
+#endif
+		   )
 			_dprintf("[doSystem] %s\n", cmd);
 		rc = system(cmd);
 		bfree(B_L, cmd);
@@ -1780,10 +1764,12 @@ swap_check()
 /*
  * Kills process whose PID is stored in plaintext in pidfile
  * @param	pidfile	PID file
+ * @sig  	signal to be send
+ * @rm   	whether to remove this pid file (1) or not (0).
  * @return	0 on success and errno on failure
  */
 
-int kill_pidfile(char *pidfile)
+int kill_pidfile_s_rm(char *pidfile, int sig, int rm)
 {
 	FILE *fp;
 	char buf[256];
@@ -1792,45 +1778,23 @@ int kill_pidfile(char *pidfile)
 		if (fgets(buf, sizeof(buf), fp)) {
 			pid_t pid = strtoul(buf, NULL, 0);
 			fclose(fp);
-			return kill(pid, SIGTERM);
-		}
-		fclose(fp);
-  	}
-	return errno;
-}
-
-
-int kill_pidfile_s(char *pidfile, int sig)
-{
-	FILE *fp;
-	char buf[256];
-
-	if ((fp = fopen(pidfile, "r")) != NULL) {
-		if (fgets(buf, sizeof(buf), fp)) {
-			pid_t pid = strtoul(buf, NULL, 0);
-			fclose(fp);
-			return kill(pid, sig);
-		}
-		fclose(fp);
-  	}
-	return errno;
-}
-
-int kill_pidfile_s_rm(char *pidfile, int sig)
-{
-	FILE *fp;
-	char buf[256];
-
-	if ((fp = fopen(pidfile, "r")) != NULL) {
-		if (fgets(buf, sizeof(buf), fp)) {
-			pid_t pid = strtoul(buf, NULL, 0);
-			fclose(fp);
-			unlink(pidfile);
+			if(rm)
+				unlink(pidfile);
 			return kill(pid, sig);
 		}
 		fclose(fp);
 	}
 	return errno;
+}
+
+int kill_pidfile(char *pidfile)
+{
+	return kill_pidfile_s_rm(pidfile, SIGTERM, 1);
+}
+
+int kill_pidfile_s(char *pidfile, int sig)
+{
+	return kill_pidfile_s_rm(pidfile, sig, 0);
 }
 
 long uptime(void)
@@ -1869,7 +1833,7 @@ int _vstrsep(char *buf, const char *sep, ...)
 	return n;
 }
 
-#if defined(CONFIG_BCMWL5) || defined(RTCONFIG_REALTEK) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_LANTIQ)
+#if defined(CONFIG_BCMWL5) || defined(RTCONFIG_REALTEK) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_LANTIQ)|| defined(RTCONFIG_QCA)
 char *
 wl_ether_etoa(const struct ether_addr *n)
 {
@@ -1880,7 +1844,7 @@ wl_ether_etoa(const struct ether_addr *n)
 	for (i = 0; i < ETHER_ADDR_LEN; i++) {
 		if (i)
 			*c++ = ':';
-#if defined(RTCONFIG_LANTIQ)		
+#if defined(RTCONFIG_LANTIQ)|| defined(RTCONFIG_LANTIQ)|| defined(RTCONFIG_QCA)			
 		c += sprintf(c, "%02X", n->ether_addr_octet[i] & 0xff);
 #else
 		c += sprintf(c, "%02X", n->octet[i] & 0xff);
@@ -2154,6 +2118,97 @@ sysfail:
  return NULL;
 }
 
+#if 0 // replaced by #define in shared.h
+int modprobe(const char *mod)
+{
+#if 1
+	return eval("modprobe", "-s", (char *)mod);
+#else
+	int r = eval("modprobe", "-s", (char *)mod);
+	cprintf("modprobe %s = %d\n", mod, r);
+	return r;
+#endif
+}
+#endif // 0
+
+int modprobe_r(const char *mod)
+{
+#if 1
+	return eval("modprobe", "-r", (char *)mod);
+#else
+	int r = eval("modprobe", "-r", (char *)mod);
+	cprintf("modprobe -r %s = %d\n", mod, r);
+	return r;
+#endif
+}
+
+/**
+ * Load kernel modules in @kmods_list in original order.
+ * @kmods_list:	a string contains all kernel modules should be loaded by this function.
+ * @return:
+ * 	0:	success
+ *     -1:	invalid parameter
+ */
+int load_kmods(char *kmods_list)
+{
+	char kmod[128], *next;
+
+	if (!kmods_list)
+		return -1;
+
+	foreach(kmod, kmods_list, next) {
+		if (module_loaded(kmod))
+			continue;
+
+		modprobe(kmod);
+	}
+
+	return 0;
+}
+
+/**
+ * Remove kernel modules in @kmods_list in REVERSE order.
+ * @kmods_list:	a string contains all kernel modules should be loaded by this function.
+ * @return:
+ * 	0:	success
+ *     -1:	invalid parameter
+ *     -2:	can't allocate memory for holding parameter.
+ */
+int remove_kmods(char *kmods_list)
+{
+	char buf[256], *p, *q;
+
+	if (!kmods_list)
+		return -1;
+
+	if (strlen(kmods_list) > sizeof(buf) - 1) {
+		p = strdup(kmods_list);
+		if (p == NULL) {
+			dbg("%s: Can't allocate memory for [%s]\n",
+				__func__, kmods_list);
+			return -2;
+		}
+	} else
+		p = strcpy(buf, kmods_list);
+
+	for (q = NULL; q != p;) {
+		q = strrchr(p, ' ') ? : p;
+		if (*q == ' ')
+			*q++ = '\0';
+		if (*q == '\0')
+			continue;
+		if (!module_loaded(q))
+			continue;
+
+		modprobe_r(q);
+	}
+
+	if (p != buf)
+		free(p);
+
+	return 0;
+}
+
 int num_of_wl_if()
 {
 	char word[256], *next;
@@ -2190,3 +2245,81 @@ int hex2str(unsigned char *hex, char *str, int hex_len)
 	*d = 0;
 	return 1;
 } /* End of hex2str */
+
+int char2hex (char ch)
+{
+	if(ch >= '0' && ch <= '9')
+		return ch - '0';
+	ch |= 0x20;
+	if(ch >= 'a' && ch <= 'f')
+		return ch - 'a' + 10;
+	return -1;
+}
+
+int str2hex(const char *str, unsigned char *data, size_t size)
+{
+	int idx,len;
+	int v1, v2;
+
+	for(idx = 0, len = 0; len < size; len++) {
+		if((v1 = char2hex(str[idx++])) < 0)
+			return len;
+		if((v2 = char2hex(str[idx++])) < 0)
+			return -1;
+		data[len] = (unsigned char)((v1 << 4)|v2);
+	}
+	return len;
+}
+
+
+void reset_stacksize(int newval)
+{
+	struct rlimit   lim;
+
+	getrlimit(RLIMIT_STACK, &lim);
+	printf("\nnow sys rlimit:cur=%d, max=%d\n", (int)lim.rlim_cur, (int)lim.rlim_max);
+
+	if(newval == ASUSRT_STACKSIZE && nvram_get_int("asus_stacksize"))
+		newval = nvram_get_int("asus_stacksize");
+
+	lim.rlim_cur = newval;
+	if(setrlimit(RLIMIT_STACK, &lim)==-1)
+		printf("\nreset stack_size soft limit failed\n");
+	else
+		printf("\nreset stack_size soft limit as %d\n", newval);
+}
+
+#define ARP_CACHE       "/proc/net/arp"
+#define ARP_BUFFER_LEN  512
+#define IPLEN           16
+
+/* 1/4/6 */
+#define ARP_LINE_FORMAT "%20s %*s %*s %20s %*s %20s"
+
+int arpcache(char *tgmac, char *tgip)
+{
+	FILE *arpCache = fopen(ARP_CACHE, "r");
+	if (!arpCache) {
+		perror("cannot open arp cache");
+		return -1;
+	}
+
+	char header[ARP_BUFFER_LEN];
+	if (!fgets(header, sizeof(header), arpCache))
+	{
+		return -1;
+	}
+
+	char ipAddr[ARP_BUFFER_LEN], hwAddr[ARP_BUFFER_LEN], device[ARP_BUFFER_LEN];
+	while (fscanf(arpCache, ARP_LINE_FORMAT, ipAddr, hwAddr, device) == 3)
+	{
+		if(strncasecmp(tgmac, hwAddr, IPLEN-1) == 0) {
+			strlcpy(tgip, ipAddr, IPLEN);
+			break;
+		}
+	}
+
+	fclose(arpCache);
+	return 0;
+}
+

@@ -66,6 +66,7 @@ define(function(){
 					{url: "ParentalControl.asp", tabName: "__INHERIT__"},
 					{url: "AiProtection_AdBlock.asp", tabName: "Ad Blocking"},
 					{url: "AiProtection_Key_Guard.asp", tabName: "Key Guard"},
+					{url: "YandexDNS.asp", tabName: "<#YandexDNS#>"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				] 
 			},			
@@ -112,6 +113,7 @@ define(function(){
 					{url: "PrinterServer.asp", tabName: "__INHERIT__"},
 					{url: "Advanced_Modem_Content.asp", tabName: "__INHERIT__"},
 					{url: "Advanced_TimeMachine.asp", tabName: "__INHERIT__"},
+					{url: "fileflex.asp", tabName: "__INHERIT__"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				] 
 			},
@@ -145,7 +147,8 @@ define(function(){
 					{url: "Advanced_ACL_Content.asp", tabName: "<#menu5_1_4#>"},
 					{url: "Advanced_WSecurity_Content.asp", tabName: "<#menu5_1_5#>"},
 					{url: "Advanced_WAdvanced_Content.asp", tabName: "<#menu5_1_6#>"},
-					{url: "Advanced_WProxy_Content.asp", tabName: "Wi-Fi Proxy"},
+					{url: "Advanced_WProxy_Content.asp", tabName: "<#WiFi_Proxy_item#>"},
+					{url: "Advanced_Roaming_Block_Content.asp", tabName: "<#WiFi_Roaming_Block_List#>"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				] 
 			},
@@ -220,13 +223,13 @@ define(function(){
 					{url: "Advanced_System_Content.asp", tabName: "<#menu5_6_2#>"},
 					{url: "Advanced_FirmwareUpgrade_Content.asp", tabName: "<#menu5_6_3#>"},
 					{url: "Advanced_SettingBackup_Content.asp", tabName: "<#menu5_6_4#>"},
-					{url: "Advanced_PerformanceTuning_Content.asp", tabName: "Performance tuning"},
+					{url: "Advanced_PerformanceTuning_Content.asp", tabName: "Fan tuning"},
 					{url: "Advanced_ADSL_Content.asp", tabName: "<#menu_dsl_setting#>"},
 					{url: "Advanced_Feedback.asp", tabName: "<#menu_feedback#>"},
 					{url: "Advanced_SNMP_Content.asp", tabName: "SNMP"},
 					{url: "Advanced_TR069_Content.asp", tabName: "TR-069"},
 					{url: "Advanced_Notification_Content.asp", tabName: "Notification"},
-					{url: "Advanced_Privacy.asp", tabName: "Privacy"},
+					{url: "Advanced_Privacy.asp", tabName: "<#menu_privacy#>"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				]
 			},
@@ -263,11 +266,7 @@ define(function(){
 			menus: function(){
 				var retArray = [];
 
-				if(multissid_support == -1){
-					retArray.push("menu_GuestNetwork");
-				}
-
-				if(multissid_support == -1){
+				if(!multissid_support){
 					retArray.push("menu_GuestNetwork");
 				}
 
@@ -319,7 +318,7 @@ define(function(){
 					retArray.push("menu_VLAN");
 					retArray.push("menu_Firewall");
 
-					if(userRSSI_support){
+					if(!userRSSI_support){
 						retArray.push("menu_Wireless");
 					}
 
@@ -411,7 +410,7 @@ define(function(){
 					retArray.push("YandexDNS.asp");
 				}
 
-				if(!feedback_support) {		
+				if(!frs_feedback_support) {		
 					retArray.push("Advanced_Feedback.asp");
 				}
 
@@ -541,6 +540,20 @@ define(function(){
 
 				if(!rrsut_support)
 					retArray.push("cloud_router_sync.asp");
+
+				if(!amesh_support)
+					retArray.push("Advanced_Roaming_Block_Content.asp");
+				else{
+					if(ameshRouter_support){
+						if(!isSwMode("rt") && !isSwMode("ap"))
+							retArray.push("Advanced_Roaming_Block_Content.asp");
+					}
+					else if(ameshNode_support)
+						retArray.push("Advanced_Roaming_Block_Content.asp");
+				}
+
+				if(!fileflex_support)
+					retArray.push("fileflex.asp");
 
 				/* Operation Mode */
 				if(isSwMode("re")){

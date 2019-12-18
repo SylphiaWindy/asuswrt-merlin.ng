@@ -55,9 +55,9 @@ var pptpd_sr_rulelist_array = decodeURIComponent(pptpd_sr_rulelist_array_ori);
 var pptpd_sr_edit_username = "";
 
 var max_shift = "";	/*MODELDEP (include dict #PPTP_desc2# #vpn_max_clients# #vpn_maximum_clients#) : 
-				RT-AC5300/RT-AC5300R/RT-AC3200/RT-AC3100/RT-AC88U/RT-AC87U/RT-AC68U/RT-AC66U/RT-AC56U/RT-N66U/RT-N18U */
-if(based_modelid == "RT-AC5300" || based_modelid == "RT-AC5300R" || based_modelid == "RT-AC3200" || based_modelid == "RT-AC3100" ||
-		based_modelid == "RT-AC88U" || based_modelid == "RT-AC87U" || based_modelid == "RT-AC68U" ||
+				RT-AC5300/GT-AC5300/GT-AX11000/RT-AC86U/AC2900/RT-AC3200/RT-AC3100/RT-AC88U/RT-AX88U/RT-AC87U/RT-AC68U/RT-AC66U/RT-AC56U/RT-N66U/RT-N18U */
+if(based_modelid == "RT-AC5300" || based_modelid == "GT-AC5300" || based_modelid == "GT-AC9600" || based_modelid == "RT-AC3200" || based_modelid == "RT-AC3100" || based_modelid == "GT-AX11000" || based_modelid == "RT-AX92U" ||
+		based_modelid == "RT-AC88U" || based_modelid == "RT-AX88U" || based_modelid == "RT-AC86U" || based_modelid == "GT-AC2900" || based_modelid == "RT-AC87U" || based_modelid == "RT-AC68U" ||
 		based_modelid == "RT-AC66U" || based_modelid == "RT-AC56U" ||
 		based_modelid == "RT-N66U" || based_modelid == "RT-N18U"){
 	max_shift = parseInt("29");
@@ -76,8 +76,8 @@ function initial(){
 	var pptpd_clients = '<% nvram_get("pptpd_clients"); %>';
 	
 	show_menu();
-	httpApi.faqURL("faq", "114892", "https://www.asus.com", "/support/FAQ/");
-	httpApi.faqURL("faq_port_forwarding", "1033906", "https://www.asus.com", "/support/FAQ/");
+	httpApi.faqURL("114892", function(url){document.getElementById("faq").href=url;});
+	httpApi.faqURL("1033906", function(url){document.getElementById("faq_port_forwarding").href=url;});
 
 	//if support pptpd and openvpnd then show switch button
 	if(pptpd_support && openvpnd_support) {
@@ -176,6 +176,12 @@ function initial(){
 	if(!ipsec_srv_support) {
 		delete vpn_server_array.IPSEC;
 	}
+
+	// Models with encrypted passwords
+	if (based_modelid == "RT-AX88U") {
+		showhide("show_pass_div", 0);
+	}
+
 	$('#divSwitchMenu').html(gen_switch_menu(vpn_server_array, "PPTP"));
 
 }
@@ -203,6 +209,7 @@ function show_warning_message(){
 		document.getElementById("privateIP_notes").style.display = "";
 }
 
+<% get_realip(); %>
 function get_real_ip(){
 	$.ajax({
 		url: 'get_real_ip.asp',
@@ -779,7 +786,7 @@ function check_vpn_conflict() {		//if conflict with LAN ip & DHCP ip pool & stat
 	var origin_lan_ip = '<% nvram_get("lan_ipaddr"); %>';
 	var lan_ip_subnet = origin_lan_ip.split(".")[0]+"."+origin_lan_ip.split(".")[1]+"."+origin_lan_ip.split(".")[2]+".";
 	var lan_ip_end = parseInt(origin_lan_ip.split(".")[3]);
-	var dhcp_staticlists = '<% nvram_get("dhcp_staticlist"); %>'.replace(/&#62/g, ">").replace(/&#60/g, "<");;
+	var dhcp_staticlists = "<% nvram_get("dhcp_staticlist"); %>".replace(/&#62/g, ">").replace(/&#60/g, "<");
 	var staticclist_row = dhcp_staticlists.split('<');
 	var pptpd_clients_subnet = document.form._pptpd_clients_start.value.split(".")[0] 
 					   + "." + document.form._pptpd_clients_start.value.split(".")[1] 
@@ -828,7 +835,7 @@ function check_vpn_conflict() {		//if conflict with LAN ip & DHCP ip pool & stat
 /* Advanced Setting end */ 
 </script>
 </head>
-<body onload="initial();">
+<body onload="initial();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <iframe name="hidden_frame" id="hidden_frame" src="" width="0" height="0" frameborder="0"></iframe>
@@ -870,7 +877,7 @@ function check_vpn_conflict() {		//if conflict with LAN ip & DHCP ip pool & stat
 									<div>&nbsp;</div>
 									<div id="divVPNTitle" class="formfonttitle"><#BOP_isp_heart_item#> - PPTP</div>
 									<div id="divSwitchMenu" style="margin-top:-40px;float:right;"></div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div id="privateIP_notes" class="formfontdesc" style="display:none;color:#FC0;"><#vpn_privateIP_hint#></div>
 									<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">
 										<thead>
@@ -926,7 +933,7 @@ function check_vpn_conflict() {		//if conflict with LAN ip & DHCP ip pool & stat
 												</li>
 											</ul>
 										</div>
-										<div style="color:#FFCC00;"><input type="checkbox" name="show_pass" id="show_pass" onclick="showpptpd_clientlist(); parsePPTPClients();pptpd_connected_status();">Show passwords</div>
+										<div style="color:#FFCC00;" id="show_pass_div"><input type="checkbox" name="show_pass" id="show_pass" onclick="showpptpd_clientlist(); parsePPTPClients();pptpd_connected_status();">Show passwords</div>
 										<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" class="FormTable_table" style="margin-top:8px;">
 											<thead>
 											<tr>
@@ -935,7 +942,7 @@ function check_vpn_conflict() {		//if conflict with LAN ip & DHCP ip pool & stat
 											</thead>								
 											<tr>
 												<th><#PPPConnection_x_WANLink_itemname#></th>
-												<th><#HSDPAConfig_Username_itemname#></th>
+												<th><#Username#></th>
 												<th><#HSDPAConfig_Password_itemname#></th>
 												<th><#list_add_delete#></th>
 												<th><#pvccfg_edit#></th>

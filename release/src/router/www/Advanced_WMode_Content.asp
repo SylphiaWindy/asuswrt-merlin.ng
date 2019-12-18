@@ -61,6 +61,7 @@
 <script language="JavaScript" type="text/javascript" src="/popup.js"></script>
 <script language="JavaScript" type="text/javascript" src="/validator.js"></script>
 <script language="JavaScript" type="text/JavaScript" src="/js/jquery.js"></script>
+<script language="JavaScript" type="text/JavaScript" src="/js/httpApi.js"></script>
 <script>
 <% wl_get_parameter(); %>
 
@@ -95,7 +96,7 @@ function initial(){
 		document.getElementById("wl_wdslist_Block").style.display = "none";
 		document.getElementById("submitBtn").style.display = "none";
 	}
-	else if (based_modelid == "RT-AD7200" && '<% nvram_get("wl_unit"); %>' == '3') {
+	else if (band60g_support && '<% nvram_get("wl_unit"); %>' == '3') {
 		document.getElementById("wl_2g_mac").style.display = "none";
 		document.getElementById("wl_5g_mac").style.display = "none";
 		document.getElementById("wl_5g_mac_2").style.display = "none";
@@ -122,6 +123,15 @@ function initial(){
 		document.getElementById("wl_5g_mac_2").style.display = "";
 		document.getElementById("wl_5g_mac_th1").innerHTML = "5GHz-1 MAC";
 	}
+
+	$("#redirect_to_setup")
+		.attr('target','_self')
+		.attr("href", "Advanced_Wireless_Content.asp")
+		.attr("style", "text-decoration:underline;color:#FFCC00;");
+	$("#redirect_to_FAQ")
+		.attr('target','_blank')
+		.attr("style", "text-decoration:underline;color:#FFCC00;cursor: pointer;");
+	httpApi.faqURL("1039910", function(url){document.getElementById("redirect_to_FAQ").href=url;});
 
 	wl_bwch_hint();
 	setTimeout("wds_scan();", 500);
@@ -174,7 +184,7 @@ function addRow(obj, upper){
 		obj.focus();
 		obj.select();
 		return false;
-	}else if (!check_macaddr(obj, check_hwaddr_flag(obj))){
+	}else if (!check_macaddr(obj, check_hwaddr_flag(obj, 'inner'))){
 		obj.focus();
 		obj.select();		
 		return false;
@@ -224,17 +234,13 @@ function applyRule(){
 		inputRCtrl2(document.form.wl_wdsapply_x, 1);
 	}
 	
-	if(document.form.wl_mode_x.value == "1"){
-		document.form.wl_wdsapply_x.value = "1";
-	}
-		
 	if(wl6_support){
 		document.form.action_wait.value = 8;
 	}
 	else{
 		document.form.action_wait.value = 3;
 	}
-		
+
 	showLoading();	
 	document.form.submit();
 }
@@ -387,7 +393,7 @@ function checkWLReady(){
 </script>
 </head>
 
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 
@@ -433,9 +439,12 @@ function checkWLReady(){
 								<td bgcolor="#4D595D" valign="top">
 									<div>&nbsp;</div>
 									<div class="formfonttitle"><#menu5_1#> - <#menu5_1_3#></div>
-									<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+									<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 									<div class="formfontdesc"><#WLANConfig11b_display1_sectiondesc#></div>
-									<div class="formfontdesc" style="color:#FFCC00;"><#ADSL_FW_note#><#WLANConfig11b_display2_sectiondesc#></div>
+									<div class="formfontdesc" style="color:#FFCC00;"><#ADSL_FW_note#></div>
+									<div class="formfontdesc" style="color:#FFCC00;margin-left:28px;">
+										<#WLANConfig11b_display2_sectiondesc#>&nbsp;<#WLANConfig11b_display21_sectiondesc#><br><#Setup_note#>
+									</div>
 									<div class="formfontdesc"><#WLANConfig11b_display3_sectiondesc#>
 										<ol>
 											<li><#WLANConfig11b_display31_sectiondesc#></li>

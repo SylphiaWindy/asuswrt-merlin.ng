@@ -199,7 +199,16 @@ crypto_print_openssl_errors(const unsigned int flags)
                 "in common with the client. Your --tls-cipher setting might be "
                 "too restrictive.");
         }
-
+        else if (ERR_GET_REASON(err) == SSL_R_UNSUPPORTED_PROTOCOL)
+        {
+            msg(D_CRYPT_ERRORS, "TLS error: Unsupported protocol. This typically "
+                 "indicates that client and server have no common TLS version enabled. "
+                 "This can be caused by mismatched tls-version-min and tls-version-max "
+                 "options on client and server. "
+                 "If your OpenVPN client is between v2.3.6 and v2.3.2 try adding "
+                 "tls-version-min 1.0 to the client configuration to use TLS 1.0+ "
+                 "instead of TLS 1.0 only");
+        }
         msg(flags, "OpenSSL: %s", ERR_error_string(err, NULL));
     }
 }
@@ -670,7 +679,7 @@ cipher_ctx_init(EVP_CIPHER_CTX *ctx, const uint8_t *key, int key_len,
 {
     ASSERT(NULL != kt && NULL != ctx);
 
-    EVP_CIPHER_CTX_init(ctx);
+    EVP_CIPHER_CTX_reset(ctx);
     if (!EVP_CipherInit(ctx, kt, NULL, NULL, enc))
     {
         crypto_msg(M_FATAL, "EVP cipher init #1");
@@ -688,12 +697,6 @@ cipher_ctx_init(EVP_CIPHER_CTX *ctx, const uint8_t *key, int key_len,
 
     /* make sure we used a big enough key */
     ASSERT(EVP_CIPHER_CTX_key_length(ctx) <= key_len);
-}
-
-void
-cipher_ctx_cleanup(EVP_CIPHER_CTX *ctx)
-{
-    EVP_CIPHER_CTX_cleanup(ctx);
 }
 
 int

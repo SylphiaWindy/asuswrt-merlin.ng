@@ -1,6 +1,6 @@
 /* A GNU-like <math.h>.
 
-   Copyright (C) 2002-2003, 2007-2018 Free Software Foundation, Inc.
+   Copyright (C) 2002-2003, 2007-2019 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -92,27 +92,27 @@ _GL_END_NAMESPACE
    classification macros with an argument of real-floating (that is,
    one of float, double, or long double).  */
 #define _GL_WARN_REAL_FLOATING_DECL(func) \
-_GL_MATH_INLINE int                                                 \
-rpl_ ## func ## f (float f)                                         \
-{                                                                   \
-  return func (f);                                                  \
-}                                                                   \
-_GL_MATH_INLINE int                                                 \
-rpl_ ## func ## d (double d)                                        \
-{                                                                   \
-  return func (d);                                                  \
-}                                                                   \
-_GL_MATH_INLINE int                                                 \
-rpl_ ## func ## l (long double l)                                   \
-{                                                                   \
-  return func (l);                                                  \
-}                                                                   \
-_GL_WARN_ON_USE (rpl_ ## func ## f, #func " is unportable - "       \
-                 "use gnulib module " #func " for portability");    \
-_GL_WARN_ON_USE (rpl_ ## func ## d, #func " is unportable - "       \
-                 "use gnulib module " #func " for portability");    \
-_GL_WARN_ON_USE (rpl_ ## func ## l, #func " is unportable - "       \
-                 "use gnulib module " #func " for portability")
+_GL_MATH_INLINE int                                                       \
+_GL_WARN_ON_USE_ATTRIBUTE (#func " is unportable - "                      \
+                           "use gnulib module " #func " for portability") \
+rpl_ ## func ## f (float f)                                               \
+{                                                                         \
+  return func (f);                                                        \
+}                                                                         \
+_GL_MATH_INLINE int                                                       \
+_GL_WARN_ON_USE_ATTRIBUTE (#func " is unportable - "                      \
+                           "use gnulib module " #func " for portability") \
+rpl_ ## func ## d (double d)                                              \
+{                                                                         \
+  return func (d);                                                        \
+}                                                                         \
+_GL_MATH_INLINE int                                                       \
+_GL_WARN_ON_USE_ATTRIBUTE (#func " is unportable - "                      \
+                           "use gnulib module " #func " for portability") \
+rpl_ ## func ## l (long double l)                                         \
+{                                                                         \
+  return func (l);                                                        \
+}
 #define _GL_WARN_REAL_FLOATING_IMPL(func, value) \
   (sizeof (value) == sizeof (float) ? rpl_ ## func ## f (value)     \
    : sizeof (value) == sizeof (double) ? rpl_ ## func ## d (value)  \
@@ -627,11 +627,20 @@ _GL_WARN_ON_USE (expf, "expf is unportable - "
 #endif
 
 #if @GNULIB_EXPL@
-# if !@HAVE_EXPL@ || !@HAVE_DECL_EXPL@
-#  undef expl
+# if @REPLACE_EXPL@
+#  if !(defined __cplusplus && defined GNULIB_NAMESPACE)
+#   undef expl
+#   define expl rpl_expl
+#  endif
+_GL_FUNCDECL_RPL (expl, long double, (long double x));
+_GL_CXXALIAS_RPL (expl, long double, (long double x));
+# else
+#  if !@HAVE_EXPL@ || !@HAVE_DECL_EXPL@
+#   undef expl
 _GL_FUNCDECL_SYS (expl, long double, (long double x));
-# endif
+#  endif
 _GL_CXXALIAS_SYS (expl, long double, (long double x));
+# endif
 _GL_CXXALIASWARN (expl);
 #elif defined GNULIB_POSIXCHECK
 # undef expl
@@ -751,11 +760,20 @@ _GL_WARN_ON_USE (expm1, "expm1 is unportable - "
 #endif
 
 #if @GNULIB_EXPM1L@
-# if !@HAVE_DECL_EXPM1L@
-#  undef expm1l
+# if @REPLACE_EXPM1L@
+#  if !(defined __cplusplus && defined GNULIB_NAMESPACE)
+#   undef expm1l
+#   define expm1l rpl_expm1l
+#  endif
+_GL_FUNCDECL_RPL (expm1l, long double, (long double x));
+_GL_CXXALIAS_RPL (expm1l, long double, (long double x));
+# else
+#  if !@HAVE_DECL_EXPM1L@
+#   undef expm1l
 _GL_FUNCDECL_SYS (expm1l, long double, (long double x));
-# endif
+#  endif
 _GL_CXXALIAS_SYS (expm1l, long double, (long double x));
+# endif
 _GL_CXXALIASWARN (expm1l);
 #elif defined GNULIB_POSIXCHECK
 # undef expm1l
@@ -1827,10 +1845,19 @@ _GL_WARN_ON_USE (rint, "rint is unportable - "
 #endif
 
 #if @GNULIB_RINTL@
-# if !@HAVE_RINTL@
+# if @REPLACE_RINTL@
+#  if !(defined __cplusplus && defined GNULIB_NAMESPACE)
+#   undef rintl
+#   define rintl rpl_rintl
+#  endif
+_GL_FUNCDECL_RPL (rintl, long double, (long double x));
+_GL_CXXALIAS_RPL (rintl, long double, (long double x));
+# else
+#  if !@HAVE_RINTL@
 _GL_FUNCDECL_SYS (rintl, long double, (long double x));
-# endif
+#  endif
 _GL_CXXALIAS_SYS (rintl, long double, (long double x));
+# endif
 _GL_CXXALIASWARN (rintl);
 #elif defined GNULIB_POSIXCHECK
 # undef rintl
@@ -2352,7 +2379,7 @@ _GL_WARN_REAL_FLOATING_DECL (isnan);
     sizeof (x) == sizeof (double) ? __builtin_signbit (x) : \
     __builtin_signbitf (x))
 # endif
-# if @REPLACE_SIGNBIT@
+# if @REPLACE_SIGNBIT@ && !GNULIB_defined_signbit
 #  undef signbit
 _GL_EXTERN_C int gl_signbitf (float arg);
 _GL_EXTERN_C int gl_signbitd (double arg);
@@ -2395,6 +2422,7 @@ _GL_EXTERN_C int gl_signbitl (long double arg);
    (sizeof (x) == sizeof (long double) ? gl_signbitl (x) : \
     sizeof (x) == sizeof (double) ? gl_signbitd (x) : \
     gl_signbitf (x))
+#  define GNULIB_defined_signbit 1
 # endif
 # ifdef __cplusplus
 #  if defined signbit || defined GNULIB_NAMESPACE

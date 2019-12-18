@@ -1,7 +1,7 @@
 /**************************************************************************
  *   nano.h  --  This file is part of GNU nano.                           *
  *                                                                        *
- *   Copyright (C) 1999-2011, 2013-2018 Free Software Foundation, Inc.    *
+ *   Copyright (C) 1999-2011, 2013-2019 Free Software Foundation, Inc.    *
  *   Copyright (C) 2014-2017 Benno Schulenberg                            *
  *                                                                        *
  *   GNU nano is free software: you can redistribute it and/or modify     *
@@ -113,14 +113,11 @@
 #define N_(string) gettext_noop(string)
 		/* Mark a string that will be sent to gettext() later. */
 
-#include <stddef.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <dirent.h>
 #include <regex.h>
 #include <signal.h>
-#include <assert.h>
+#include <stdlib.h>
+#include <sys/stat.h>
 
 /* If we aren't using an ncurses with mouse support, exclude any
  * mouse routines, as they are useless then. */
@@ -147,13 +144,15 @@
 #define BAD_COLOR -2
 #endif
 
+#define STANDARD_INPUT  0
+
 /* Enumeration types. */
 typedef enum {
 	NIX_FILE, DOS_FILE, MAC_FILE
 } file_format;
 
 typedef enum {
-	HUSH, MILD, ALERT
+	HUSH, NOTICE, MILD, ALERT
 } message_type;
 
 typedef enum {
@@ -178,7 +177,7 @@ typedef enum {
 #ifdef ENABLE_COMMENT
 	COMMENT, UNCOMMENT, PREFLIGHT,
 #endif
-	CUT, CUT_TO_EOF, PASTE, INSERT, COUPLE_BEGIN, COUPLE_END, OTHER
+	ZAP, CUT, CUT_TO_EOF, PASTE, INSERT, COUPLE_BEGIN, COUPLE_END, OTHER
 } undo_type;
 
 /* Structure types. */
@@ -188,23 +187,14 @@ typedef struct colortype {
 		/* This syntax's foreground color. */
 	short bg;
 		/* This syntax's background color. */
-	bool bright;
-		/* Is this color A_BOLD? */
-	int pairnum;
-		/* The color pair number used for this foreground color and
-		 * background color. */
+	short pairnum;
+		/* The pair number for this foreground/background color combination. */
 	int attributes;
 		/* Pair number and brightness composed into ready-to-use attributes. */
-	int rex_flags;
-		/* The regex compilation flags (with or without REG_ICASE). */
-	char *start_regex;
-		/* The start (or all) of the regex string. */
 	regex_t *start;
-		/* The compiled start (or all) of the regex string. */
-	char *end_regex;
-		/* The end (if any) of the regex string. */
+		/* The compiled regular expression for 'start=', or the only one. */
 	regex_t *end;
-		/* The compiled end (if any) of the regex string. */
+		/* The compiled regular expression for 'end=', if any. */
 	struct colortype *next;
 		/* Next set of colors. */
 	int id;
@@ -218,9 +208,26 @@ typedef struct regexlisttype {
 		/* The next regex. */
 } regexlisttype;
 
+typedef struct augmentstruct {
+	char *filename;
+		/* The file where the syntax is extended. */
+	ssize_t lineno;
+		/* The number of the line of the extendsyntax command. */
+	char *data;
+		/* The text of the line. */
+	struct augmentstruct *next;
+		/* Next node. */
+} augmentstruct;
+
 typedef struct syntaxtype {
 	char *name;
 		/* The name of this syntax. */
+	char *filename;
+		/* File where the syntax is defined, or NULL if not an included file. */
+	size_t lineno;
+		/* The line number where the 'syntax' command was found. */
+	struct augmentstruct *augmentations;
+		/* List of extendsyntax commands to apply when loaded. */
 	regexlisttype *extensions;
 		/* The list of extensions that this syntax applies to. */
 	regexlisttype *headers;
@@ -229,8 +236,6 @@ typedef struct syntaxtype {
 		/* The list of libmagic results that this syntax applies to. */
 	char *linter;
 		/* The command with which to lint this type of file. */
-	char *formatter;
-		/* The formatting command (for programming languages mainly). */
 #ifdef ENABLE_COMMENT
 	char *comment;
 		/* The line comment prefix (and postfix) for this type of file. */
@@ -274,38 +279,20 @@ typedef struct lintstruct {
 #endif /* ENABLE_COLOR */
 
 /* More structure types. */
-typedef struct filestruct {
+typedef struct linestruct {
 	char *data;
 		/* The text of this line. */
 	ssize_t lineno;
 		/* The number of this line. */
-	struct filestruct *next;
+	struct linestruct *next;
 		/* Next node. */
-	struct filestruct *prev;
+	struct linestruct *prev;
 		/* Previous node. */
 #ifdef ENABLE_COLOR
 	short *multidata;
 		/* Array of which multi-line regexes apply to this line. */
 #endif
-} filestruct;
-
-typedef struct partition {
-	filestruct *fileage;
-		/* The top line of this portion of the file. */
-	filestruct *top_prev;
-		/* The line before the top line of this portion of the file. */
-	char *top_data;
-		/* The text before the beginning of the top line of this portion
-		 * of the file. */
-	filestruct *filebot;
-		/* The bottom line of this portion of the file. */
-	filestruct *bot_next;
-		/* The line after the bottom line of this portion of the
-		 * file. */
-	char *bot_data;
-		/* The text after the end of the bottom line of this portion of
-		 * the file. */
-} partition;
+} linestruct;
 
 #ifndef NANO_TINY
 typedef struct undo_group {
@@ -334,12 +321,8 @@ typedef struct undo {
 		/* Some flag data we need. */
 	undo_group *grouping;
 		/* Undo info specific to groups of lines. */
-
-	/* Cut-specific stuff we need. */
-	filestruct *cutbuffer;
+	linestruct *cutbuffer;
 		/* Copy of the cutbuffer. */
-	filestruct *cutbottom;
-		/* Copy of cutbottom. */
 	ssize_t mark_begin_lineno;
 		/* Mostly the line number of the current line; sometimes something else. */
 	size_t mark_begin_x;
@@ -364,13 +347,13 @@ typedef struct poshiststruct {
 typedef struct openfilestruct {
 	char *filename;
 		/* The file's name. */
-	filestruct *fileage;
+	linestruct *filetop;
 		/* The file's first line. */
-	filestruct *filebot;
+	linestruct *filebot;
 		/* The file's last line. */
-	filestruct *edittop;
+	linestruct *edittop;
 		/* The current top of the edit window for this file. */
-	filestruct *current;
+	linestruct *current;
 		/* The current line for this file. */
 	size_t totsize;
 		/* The file's total number of characters. */
@@ -387,8 +370,12 @@ typedef struct openfilestruct {
 		/* Whether the file has been modified. */
 	struct stat *current_stat;
 		/* The file's current stat information. */
+#ifdef ENABLE_WRAPPING
+	linestruct *spillage_line;
+		/* The line for prepending stuff to during automatic hard-wrapping. */
+#endif
 #ifndef NANO_TINY
-	filestruct *mark;
+	linestruct *mark;
 		/* The line in the file where the mark is set; NULL if not set. */
 	size_t mark_x;
 		/* The mark's x position in the above line. */
@@ -430,17 +417,17 @@ typedef struct rcoption {
 } rcoption;
 #endif
 
-typedef struct sc {
+typedef struct keystruct {
 	const char *keystr;
-		/* The string that describes a keystroke, like "^C" or "M-R". */
+		/* The string that describes the keystroke, like "^C" or "M-R". */
 	bool meta;
 		/* Whether this is a Meta keystroke. */
 	int keycode;
 		/* The integer that, together with meta, identifies the keystroke. */
 	int menus;
-		/* Which menus this applies to. */
+		/* The menus in which this keystroke is bound. */
 	void (*func)(void);
-		/* The function we're going to run. */
+		/* The function to which this keystroke is bound. */
 #ifndef NANO_TINY
 	int toggle;
 		/* If a toggle, what we're toggling. */
@@ -452,11 +439,11 @@ typedef struct sc {
 	char *expansion;
 		/* The string of keycodes to which this shortcut is expanded. */
 #endif
-	struct sc *next;
+	struct keystruct *next;
 		/* Next in the list. */
-} sc;
+} keystruct;
 
-typedef struct subnfunc {
+typedef struct funcstruct {
 	void (*func)(void);
 		/* The actual function to call. */
 	int menus;
@@ -474,9 +461,9 @@ typedef struct subnfunc {
 		/* Is this function allowed when in view mode? */
 	long toggle;
 		/* If this is a toggle, which toggle to affect. */
-	struct subnfunc *next;
+	struct funcstruct *next;
 		/* Next item in the list. */
-} subnfunc;
+} funcstruct;
 
 #ifdef ENABLE_WORDCOMPLETION
 typedef struct completion_word {
@@ -490,6 +477,7 @@ enum
 {
 	TITLE_BAR = 0,
 	LINE_NUMBER,
+	GUIDE_STRIPE,
 	SELECTED_TEXT,
 	STATUS_BAR,
 	ERROR_MESSAGE,
@@ -517,7 +505,7 @@ enum
 	MULTIBUFFER,
 	SMOOTH_SCROLL,
 	REBIND_DELETE,
-	REBIND_KEYPAD,
+	RAW_SEQUENCES,
 	NO_CONVERT,
 	BACKUP_FILE,
 	INSECURE_BACKUP,
@@ -533,9 +521,8 @@ enum
 	WORD_BOUNDS,
 	NO_NEWLINES,
 	BOLD_TEXT,
-	QUIET,
 	SOFTWRAP,
-	POS_HISTORY,
+	POSITIONLOG,
 	LOCKING,
 	NOREAD_MODE,
 	MAKE_IT_UNIX,
@@ -544,7 +531,11 @@ enum
 	LINE_NUMBERS,
 	NO_PAUSES,
 	AT_BLANKS,
-	AFTER_ENDS
+	AFTER_ENDS,
+	LET_THEM_ZAP,
+	BREAK_LONG_LINES,
+	JUMPY_SCROLLING,
+	EMPTY_LINE
 };
 
 /* Flags for the menus in which a given function should be present. */
@@ -564,16 +555,17 @@ enum
 #define MYESNO          (1<<13)
 #define MLINTER         (1<<14)
 #define MFINDINHELP     (1<<15)
-/* This is an abbreviation for all menus except Help and YesNo. */
+/* This is an abbreviation for all menus except Help and Browser and YesNo. */
 #define MMOST  (MMAIN|MWHEREIS|MREPLACE|MREPLACEWITH|MGOTOLINE|MWRITEFILE|MINSERTFILE|\
-                MEXTCMD|MBROWSER|MWHEREISFILE|MGOTODIR|MFINDINHELP|MSPELL|MLINTER)
+                MEXTCMD|MWHEREISFILE|MGOTODIR|MFINDINHELP|MSPELL|MLINTER)
 #ifndef NANO_TINY
-#define MSOME  MMOST
+#define MSOME  MMOST|MBROWSER
 #else
 #define MSOME  MMAIN|MBROWSER
 #endif
 
 /* Basic control codes. */
+#define BS_CODE   0x08
 #define TAB_CODE  0x09
 #define ESC_CODE  0x1B
 #define DEL_CODE  0x7F
@@ -585,24 +577,32 @@ enum
 #define CONTROL_DOWN 0x404
 #define CONTROL_HOME 0x405
 #define CONTROL_END 0x406
+#define CONTROL_DELETE 0x40D
 #define SHIFT_CONTROL_LEFT 0x411
 #define SHIFT_CONTROL_RIGHT 0x412
 #define SHIFT_CONTROL_UP 0x413
 #define SHIFT_CONTROL_DOWN 0x414
 #define SHIFT_CONTROL_HOME 0x415
 #define SHIFT_CONTROL_END 0x416
+#define CONTROL_SHIFT_DELETE 0x41D
 #define ALT_LEFT 0x421
 #define ALT_RIGHT 0x422
 #define ALT_UP 0x423
 #define ALT_DOWN 0x424
+#define ALT_DELETE 0x42D
 #define SHIFT_ALT_LEFT 0x431
 #define SHIFT_ALT_RIGHT 0x432
 #define SHIFT_ALT_UP 0x433
 #define SHIFT_ALT_DOWN 0x434
+//#define SHIFT_LEFT 0x451
+//#define SHIFT_RIGHT 0x452
+#define SHIFT_UP 0x453
+#define SHIFT_DOWN 0x454
 #define SHIFT_HOME 0x455
 #define SHIFT_END 0x456
 #define SHIFT_PAGEUP 0x457
 #define SHIFT_PAGEDOWN 0x458
+#define SHIFT_DELETE 0x45D
 #define SHIFT_TAB 0x45F
 
 #ifdef USE_SLANG
@@ -622,7 +622,6 @@ enum
 #define WAS_FINAL_BACKSPACE   (1<<1)
 #define WAS_WHOLE_LINE        (1<<2)
 #define WAS_FINAL_LINE        (1<<3)
-/* The flags for the mark need to be the highest. */
 #define MARK_WAS_SET          (1<<4)
 #define WAS_MARKED_FORWARD    (1<<5)
 #endif /* !NANO_TINY */
@@ -630,9 +629,8 @@ enum
 /* The maximum number of entries displayed in the main shortcut list. */
 #define MAIN_VISIBLE (((COLS + 40) / 20) * 2)
 
-/* The default number of characters from the end of the line where
- * wrapping occurs. */
-#define CHARS_FROM_EOL 8
+/* The default number of columns from end of line where wrapping occurs. */
+#define COLUMNS_FROM_EOL 8
 
 /* The default width of a tab in spaces. */
 #define WIDTH_OF_TAB 8

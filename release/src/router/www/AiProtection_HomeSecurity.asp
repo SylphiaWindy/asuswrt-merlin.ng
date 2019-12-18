@@ -23,19 +23,22 @@ function initial(){
 		document.getElementById("adBlock_field").style.display = "";
 		document.getElementById("adb_hdr").style.display = "";
 	}
-	if (dnsfilter_support) {
-		document.getElementById("dnsfilter").style.display = "";
-		document.getElementById("dnsf_hdr").style.display = "";
-	}
 	if(keyGuard_support){
 		document.getElementById("keyGuard_field_h").style.display = "";
 		document.getElementById("keyGuard_field").style.display = "";
+	}
+	if(yadns_support)
+		$("#item_yandex").css("display", "list-item");
+
+	if(!isSupport("webs_filter") || !isSupport("apps_filter")){
+		$("#item_filter").css("display", "none");
+		$("#Link_to_ParentalCtrl").attr("href", "ParentalControl.asp");
 	}
 }
 
 </script>
 </head>
-<body onload="initial();" onunload="unload_body();">
+<body onload="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 
@@ -77,7 +80,7 @@ function initial(){
 							</td>
 						</tr> 
 						<tr>
-							<td class="line_export"><img src="images/New_ui/export/line_export.png" /></td>
+							<td><div class="splitLine"></div></td>
 						</tr>
 						<tr>
 							<td>
@@ -118,7 +121,8 @@ function initial(){
 													</div>
 													<div class="app_desc" style="height:60px;">
 														<li id="item_time_scheduling"><#Time_Scheduling#></li>
-														<li id="item_filter"><#AiProtection_filter#></li>											
+														<li id="item_filter"><#AiProtection_filter#></li>
+														<li id="item_yandex" style="display:none;"><#YandexDNS#></li>
 													</div>
 												</td>
 											</tr>
@@ -140,20 +144,6 @@ function initial(){
 											</tr>
 											<tr id="dnsf_hdr" style="height:50px; display:none;"></tr>
 
-											<tr id="dnsfilter" style="display:none;">
-												<td align="center" class="app_table_radius_left" style="width:85px;">
-													<img style="margin-top:0px;" src="/images/New_ui/DnsFiltering.png" onclick="location.href='DNSFilter.asp';">
-												</td>
-												<td class="app_table_radius_right" style="width:350px;height:120px;"">
-													<div class="app_name">
-														<a style="text-decoration: underline;" href="DNSFilter.asp">DNS Filtering</a>
-													</div>
-													<div class="app_desc" style="height:60px;">
-														<li>Block malicious websites</li>
-														<li>Block mature websites</li>
-													</div>
-												</td>
-											</tr>
 											<tr id="keyGuard_field_h" style="display:none" style="height:50px;"></tr>
 											<tr id="keyGuard_field" style="display:none">
 												<td align="center" class="app_table_radius_left" style="width:85px;">

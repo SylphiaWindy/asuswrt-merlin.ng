@@ -1,5 +1,5 @@
 /* Byte-wise substring search, using the Two-Way algorithm.
-   Copyright (C) 2008-2018 Free Software Foundation, Inc.
+   Copyright (C) 2008-2019 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
    Written by Eric Blake <ebb9@byu.net>, 2008.
 
@@ -18,7 +18,7 @@
 
 /* Before including this file, you need to include <config.h> and
    <string.h>, and define:
-     RESULT_TYPE             A macro that expands to the return type.
+     RETURN_TYPE             A macro that expands to the return type.
      AVAILABLE(h, h_l, j, n_l)
                              A macro that returns nonzero if there are
                              at least N_L bytes left starting at H[J].

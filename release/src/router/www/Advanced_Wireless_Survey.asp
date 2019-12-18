@@ -12,6 +12,10 @@
 <link rel="stylesheet" type="text/css" href="qis/qis_style.css">
 <link rel="stylesheet" type="text/css" href="index_style.css">
 <style>
+body{
+	background: #21333e !important;
+}
+
 p{
 	font-weight: bolder;
 }
@@ -232,7 +236,7 @@ function rescan(){
 </script>
 </head>
 
-<body onload="initial();" onunload="">
+<body onload="initial();" onunload="" class="bg">
 <div id="TopBanner"></div>
 
 <div id="Loading" class="popup_bg"></div>
@@ -275,7 +279,7 @@ function rescan(){
                 <td valign="top">
 	                <div>&nbsp;</div>
 			<div class="formfonttitle">Wireless - Visible Networks</div>
-			<div style="margin-left:5px;margin-top:10px;margin-bottom:10px"><img src="/images/New_ui/export/line_export.png"></div>
+			<div style="margin:10px 0 10px 5px;" class="splitLine"></div>
 			<span style="display:none; color:#FFCC00; padding-right:20px;" id="radio2warn">2.4 GHz radio is disabled - cannot scan that band!</span>
 			<span style="display:none; color:#FFCC00;" id="radio5warn">5 GHz radio is disabled - cannot scan that band!</span>
 
