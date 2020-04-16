@@ -1255,7 +1255,7 @@ obj-y += wsdd2
 obj-$(RTCONFIG_BWDPI) += faketc
 
 ifeq ($(HND_ROUTER),y)
-obj-$(RTCONFIG_WIREGURAD_TOOLS) += libmnl wireguard_tools
+obj-$(RTCONFIG_WIREGURAD_TOOLS) += libmnl wireguard-tools
 endif
 
 ifneq ($(HND_ROUTER),y)
@@ -7133,15 +7133,15 @@ ipset_arm-clean:
 	-@$(MAKE) -C ipset_arm modules_clean
 	-@rm -rf ipset_arm/Makefile ipset_arm/stamp-h1
 
-wireguard_tools: libmnl
+wireguard-tools: libmnl
 	cd wireguard-tools/src && CC=$(CC) \
 	CFLAGS="-I$(TOP)/libmnl/staged/usr/include" LDFLAGS="-L$(TOP)/libmnl/staged/usr/lib -lmnl" \
 	make
 
-wireguard_tools-clean:
+wireguard-tools-clean:
 	cd wireguard-tools/src && make clean
 
-wireguard_tools-install:
+wireguard-tools-install:
 	install -D wireguard-tools/src/wg $(INSTALLDIR)/wireguard-tools/usr/sbin/wg
 	$(STRIP) $(INSTALLDIR)/wireguard-tools/usr/sbin/wg
 
