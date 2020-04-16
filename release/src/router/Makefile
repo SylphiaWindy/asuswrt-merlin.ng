@@ -11,6 +11,7 @@
 #
 #
 
+
 export HND_ROUTER := $(shell pwd | sed 's/.*hnd.*/y/g')
 ifeq ($(HND_ROUTER),y)
 export BCM_CHIP := 4908
@@ -719,6 +720,11 @@ obj-$(RTCONFIG_LETSENCRYPT) += socat
 #obj-$(RTCONFIG_SYSSTATE) += sysstate
 obj-y += sysstate
 
+obj-$(RTCONFIG_AHS) += openssl
+obj-$(RTCONFIG_AHS) += $(CURL)
+obj-$(RTCONFIG_AHS) += json-c
+obj-$(RTCONFIG_AHS) += ahs
+
 obj-$(RTCONFIG_OPENVPN) += libvpn
 
 obj-y += rc
@@ -855,12 +861,10 @@ obj-y += scsi-idle
 endif
 obj-y += libusb10
 obj-y += libusb
-obj-y += libusb-0.1.12
-ifeq ($(RTCONFIG_USB),y)
 ifneq ($(RTCONFIG_8M_SFP),y)
 obj-y += hub-ctrl
 endif
-endif
+obj-$(RTCONFIG_USB_PRINTER) += libusb-0.1.12
 obj-$(RTCONFIG_USB_PRINTER) += u2ec
 obj-$(RTCONFIG_USB_PRINTER) += LPRng
 
@@ -1250,10 +1254,6 @@ obj-y += libconfuse
 obj-y += wsdd2
 obj-$(RTCONFIG_BWDPI) += faketc
 
-ifeq ($(HND_ROUTER),y)
-obj-$(RTCONFIG_WIREGURAD_TOOLS) += libmnl wireguard_tools
-endif
-
 ifneq ($(HND_ROUTER),y)
 obj-y += cstats
 endif
@@ -1349,7 +1349,7 @@ obj-$(HND_ROUTER) += mcpd
 #obj-$(HND_ROUTER) += jqplot
 #obj-$(HND_ROUTER) += jquery
 #obj-$(HND_ROUTER) += tablesorter
-#obj-$(HND_ROUTER) += memaccess
+obj-$(HND_ROUTER) += memaccess
 
 # ALPINE compile package
 obj-$(RTCONFIG_ALPINE) += qsr10g_image
@@ -2918,31 +2918,43 @@ libyaml-clean:
 	[ ! -f libyaml/Makefile ] || $(MAKE) -C libyaml distclean
 	@rm -f libyaml/Makefile
 
-getdns/configure:
-	cd getdns && libtoolize -ci && autoreconf -fi
+getdns/build/Makefile:
+	@rm -rf getdns/build && mkdir -p getdns/build
+	cd getdns/build && \
+	$(call CMAKE_CrossOptions, crosscompiled.cmake) && \
+	cmake -DCMAKE_TOOLCHAIN_FILE=crosscompiled.cmake \
+		-DCMAKE_INSTALL_PREFIX:PATH=/usr \
+		-DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_SKIP_RPATH=TRUE \
+		-DCMAKE_C_FLAGS="-Os -DNDEBUG -ffunction-sections -fdata-sections $(EXTRACFLAGS)" \
+		-DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections $(EXTRALDFLAGS) $(if $(RTCONFIG_OPENSSL11),-lpthread,)" \
+		-DENABLE_STATIC=TRUE -DENABLE_SHARED=FALSE -DENABLE_GOST=FALSE \
+		-DBUILD_GETDNS_QUERY=FALSE \
+		-DBUILD_GETDNS_SERVER_MON=FALSE \
+		-DBUILD_STUBBY=TRUE -DENABLE_STUB_ONLY=TRUE \
+		-DBUILD_LIBEV=FALSE -DBUILD_LIBEVENT2=FALSE -DBUILD_LIBUV=FALSE \
+		-DBUILD_TESTING=FALSE \
+		-DOPENSSL_ROOT_DIR=$(TOP)/$(OPENSSL) \
+		-DOPENSSL_INCLUDE_DIR=$(TOP)/$(OPENSSL)/include \
+		-DOPENSSL_CRYPTO_LIBRARY=$(TOP)/$(OPENSSL)/libcrypto.so \
+		-DOPENSSL_SSL_LIBRARY=$(TOP)/$(OPENSSL)/libssl.so \
+		-DLIBYAML_DIR=$(TOP)/libyaml \
+		-DLIBYAML_INCLUDE_DIR=$(TOP)/libyaml/include \
+		-DLIBYAML_LIBRARY=$(TOP)/libyaml/src/.libs/libyaml.a \
+		-DCMAKE_DISABLE_FIND_PACKAGE_Libsystemd=TRUE \
+		-DUSE_LIBIDN2=FALSE \
+		-DSTRPTIME_WORKS_EXITCODE=0 \
+		..
 
-getdns-configure: getdns/configure
-	cd getdns && \
-	$(CONFIGURE) --prefix=/usr --sysconfdir=/etc --with-piddir=/var/run \
-		--enable-static --disable-shared --disable-gost \
-		--enable-stub-only --without-libidn --without-libidn2 \
-		--without-getdns_query --without-getdns_server_mon --with-stubby \
-		--with-ssl=$(TOP)/$(OPENSSL) --with-libyaml=$(STAGEDIR)/usr \
-		CFLAGS="-Os -I$(TOP)/$(OPENSSL)/include -I$(STAGEDIR)/usr/include -ffunction-sections -fdata-sections $(EXTRACFLAGS)" \
-		LDFLAGS="-L$(TOP)/$(OPENSSL) -L$(STAGEDIR)/usr/lib -Wl,--gc-sections $(EXTRALDFLAGS)" \
-		LIBS="-lcrypto -lssl -lyaml"
-
-getdns: $(OPENSSL) libyaml getdns/Makefile
-	$(MAKE) -C $@
+getdns: $(OPENSSL) libyaml getdns/build/Makefile
+	$(MAKE) -C getdns/build
 
 getdns-install:
 	install -d $(INSTALLDIR)/getdns/usr/sbin
-	install -D getdns/src/stubby $(INSTALLDIR)/getdns/usr/sbin/stubby
+	install -D getdns/build/stubby/stubby $(INSTALLDIR)/getdns/usr/sbin/stubby
 	$(STRIP) $(INSTALLDIR)/getdns/usr/sbin/stubby
 
 getdns-clean:
-	[ ! -f getdns/Makefile ] || $(MAKE) -C getdns distclean
-	@rm -f getdns/Makefile
+	@rm -rf getdns/build
 
 iptables:
 	@$(SEP)
@@ -3269,36 +3281,37 @@ libupnp-1.3.1/Makefile: libupnp-1.3.1/Makefile.in
 		$(CONFIGURE) --prefix=/usr --disable-dependency-tracking \
 	)
 
-libusb10/stamp-h1:
-	cd libusb10 && CFLAGS="-Os -Wall $(EXTRACFLAGS)" LIBS="-lpthread -ldl -lc $(EXTRALDFLAGS)" \
-	$(CONFIGURE) --enable-shared --prefix=/usr ac_cv_lib_rt_clock_gettime=no
-	-@$(MAKE) -C libusb10 clean
-	touch $@
+libusb10/Makefile:
+	cd libusb10 && \
+	$(CONFIGURE) --enable-shared --prefix=/usr --disable-udev \
+		CFLAGS="-Os -Wall $(EXTRACFLAGS)" \
+		LIBS="-lpthread -ldl -lc $(EXTRALDFLAGS)" \
+		ac_cv_lib_rt_clock_gettime=no
 
-libusb10: libusb10/stamp-h1
+libusb10: libusb10/Makefile
 	$(MAKE) -C $@
 
 libusb10-install: libusb10
-	install -D libusb10/libusb/.libs/libusb-1.0.so.0.0.0 $(INSTALLDIR)/libusb10/usr/lib/libusb-1.0.so.0
+	install -D libusb10/libusb/.libs/libusb-1.0.so.0.2.0 $(INSTALLDIR)/libusb10/usr/lib/libusb-1.0.so.0
 	$(STRIP) $(INSTALLDIR)/libusb10/usr/lib/*.so.*
 	cd $(INSTALLDIR)/libusb10/usr/lib && \
-		ln -sf libusb-1.0.so.0 libusb-1.0.so.0.0.0 && \
+		ln -sf libusb-1.0.so.0 libusb-1.0.so.0.2.0 && \
 		ln -sf libusb-1.0.so.0 libusb-1.0.so
 
 libusb10-clean:
-	-@$(MAKE) -C libusb10 clean
-	@rm -f libusb10/stamp-h1
+	[ ! -f libusb10/Makefile ] || $(MAKE) -C libusb10 distclean
+	@rm -f libusb10/Makefile
 
-libusb/stamp-h1:
-	cd libusb && CFLAGS="-Wall -Os $(EXTRACFLAGS)" LIBS="-lpthread -ldl -lc $(EXTRALDFLAGS)" \
-	$(CONFIGURE) --prefix=/usr \
+libusb/Makefile:
+	cd libusb && \
+	$(CONFIGURE) --enable-shared --prefix=/usr \
+		CFLAGS="-Os -Wall $(EXTRACFLAGS)" \
+		LIBS="-lpthread -ldl -lc $(EXTRALDFLAGS)" \
 		LIBUSB_1_0_CFLAGS="-I$(TOP)/libusb10/libusb" \
 		LIBUSB_1_0_LIBS="-L$(TOP)/libusb10/libusb/.libs -lusb-1.0 \
 		-Wl,-R/lib:/usr/lib:/opt/usr/lib:/usr/local/share"
-	-@$(MAKE) -C libusb clean
-	touch $@
 
-libusb: libusb10 libusb/stamp-h1
+libusb: libusb10 libusb/Makefile
 	$(MAKE) -C $@
 
 libusb-install: libusb
@@ -3309,8 +3322,8 @@ libusb-install: libusb
 		ln -sf libusb-0.1.so.4 libusb.so
 
 libusb-clean:
-	-@$(MAKE) -C libusb clean
-	@rm -f libusb/stamp-h1
+	[ ! -f libusb/Makefile ] || $(MAKE) -C libusb distclean
+	@rm -f libusb/Makefile
 
 usb-modeswitch-1.2.3: libusb
 	$(MAKE) -C $@ CC=$(CC) CFLAGS="-Os $(EXTRACFLAGS) -I$(TOP)/libusb/libusb" LIBS="\
@@ -4738,6 +4751,19 @@ sysstate-clean:
 sysstate-install:
 	echo "install sysstate"
 	$(MAKE) -C sysstate install
+
+ahs: openssl $(CURL) json-c
+	@$(SEP)
+	echo "build ahs"
+	$(MAKE) -C ahs
+
+ahs-clean:
+	echo "clean ahs"
+	$(MAKE) -C ahs clean
+
+ahs-install:
+	echo "install ahs"
+	$(MAKE) -C ahs install
 
 qsr10g_image:
 aqr107_image:
@@ -6894,43 +6920,39 @@ libical-2.0.0-install:
 		ln -sf libicalvcal.so.2.0.0 libicalvcal.so.2
 
 libconfuse/Makefile:
-	cd libconfuse && $(CONFIGURE) \
-		CFLAGS="$(EXTRACFLAGS) -Os -I$(STAGEDIR)/usr/include -ffunction-sections -fdata-sections -fPIC" \
-		LDFLAGS="$(LDFLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections" \
-		--prefix=/usr --disable-shared \
-		--without-libiconv-prefix --without-libintl-prefix --disable-examples --disable-nls
+	cd libconfuse && $(CONFIGURE) --prefix=/usr --disable-shared \
+		--disable-examples --disable-nls \
+		--without-libiconv-prefix --without-libintl-prefix \
+		CFLAGS="-Wall -Os -ffunction-sections -fdata-sections -fPIC $(EXTRACFLAGS)" \
+		LDFLAGS="-Wl,--gc-sections $(LDFLAGS)"
 
-libconfuse: libiconv-1.14 libconfuse/Makefile
-	@$(SEP)
-	$(MAKE) -C $@
+libconfuse: libconfuse/Makefile
+	$(MAKE) -C $@ && $(MAKE) $@-stage
 
 libconfuse-install:
-	@$(SEP)
-# Do nothing
-#	install -D libconfuse/src/.libs/libconfuse.so.1.1.0 $(INSTALLDIR)/libconfuse/usr/lib/libconfuse.so.1.1.0
-#	cd $(INSTALLDIR)/libconfuse/usr/lib && \
-#		ln -sf libconfuse.so.1.1.0 libconfuse.so.1 &&\
-#		ln -sf libconfuse.so.1.1.0 libconfuse.so
-#	$(STRIP) $(INSTALLDIR)/libconfuse/usr/lib/*.so.*
-
+	@true
 
 libconfuse-clean:
-	@$(SEP)
 	[ ! -f libconfuse/Makefile ] || $(MAKE) -C libconfuse distclean
 	@rm -f libconfuse/Makefile
 
-inadyn/Makefile:
-	cd inadyn && $(CONFIGURE) \
-		confuse_CFLAGS="-I$(TOP)/libconfuse/src" \
-		confuse_LIBS="-L$(TOP)/libconfuse/src/.libs -lconfuse" \
-		OpenSSL_CFLAGS="-I$(TOP)/$(OPENSSL)/include" \
-		OpenSSL_LIBS="-L$(TOP)/$(OPENSSL) -lcrypto" \
-		CFLAGS="$(EXTRACFLAGS) -Os -I$(TOP)/shared -I$(SRCBASE)/include -I$(SRCBASE)/shared/bcmwifi/include -DTYPEDEF_FLOAT_T -I$(STAGEDIR)/usr/include -ffunction-sections -fdata-sections -fPIC -DASUSWRT $(if $(RTCONFIG_LETSENCRYPT),-DASUS_LE,)" \
-		LDFLAGS="$(LDFLAGS) $(EXTRA_NV_LDFLAGS) -L$(TOP)/nvram$(BCMEX)$(EX7) -lnvram -L$(TOP)/shared -lshared $(if $(RTCONFIG_QTN),-L$(TOP)/libqcsapi_client -lqcsapi_client) -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread" \
-		--prefix="" --enable-openssl
+inadyn/configure:
+	cd inadyn && ./autogen.sh
 
-inadyn: shared nvram${BCMEX}$(EX7) libconfuse inadyn/Makefile
-	@$(SEP)
+inadyn/Makefile: inadyn/configure
+	cd inadyn && $(CONFIGURE) --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
+		--enable-openssl \
+		confuse_CFLAGS="-I$(STAGEDIR)/usr/include" \
+		confuse_LIBS="-L$(STAGEDIR)/usr/lib -lconfuse" \
+		OpenSSL_CFLAGS="-I$(TOP)/$(OPENSSL)/include" \
+		OpenSSL_LIBS="-L$(TOP)/$(OPENSSL) -lcrypto -lssl $(if $(RTCONFIG_OPENSSL11),-lpthread,)" \
+		CFLAGS="-Wall -Os -I$(TOP)/shared -I$(SRCBASE)/include -DASUSWRT $(if $(RTCONFIG_LETSENCRYPT),-DASUSWRT_LE,) \
+			-I$(STAGEDIR)/usr/include  -ffunction-sections -fdata-sections $(EXTRACFLAGS)" \
+		LDFLAGS="-L$(TOP)/nvram$(BCMEX)$(EX7) -L$(TOP)/shared $(EXTRA_NV_LDFLAGS) \
+			 -L$(STAGEDIR)/usr/lib -Wl,--gc-sections $(LDFLAGS) $(EXTRALDFLAGS)" \
+		LIBS="-lnvram -lshared $(if $(RTCONFIG_QTN),-L$(TOP)/libqcsapi_client -lqcsapi_client) -ldl"
+
+inadyn: shared nvram$(BCMEX)$(EX7) libconfuse inadyn/Makefile
 	$(MAKE) -C $@
 
 inadyn-install:
@@ -6938,7 +6960,6 @@ inadyn-install:
 	$(STRIP) $(INSTALLDIR)/inadyn/usr/sbin/inadyn
 
 inadyn-clean:
-	@$(SEP)
 	[ ! -f inadyn/Makefile ] || $(MAKE) -C inadyn distclean
 	@rm -f inadyn/Makefile
 
@@ -7107,18 +7128,6 @@ ipset_arm-clean:
 	-@$(MAKE) -C ipset_arm clean
 	-@$(MAKE) -C ipset_arm modules_clean
 	-@rm -rf ipset_arm/Makefile ipset_arm/stamp-h1
-
-wireguard_tools: libmnl
-	cd wireguard/src/tools && CC=$(CC) \
-	CFLAGS="-I$(TOP)/libmnl/staged/usr/include" LDFLAGS="-L$(TOP)/libmnl/staged/usr/lib -lmnl" \
-	make
-
-wireguard_tools-clean:
-	cd wireguard/src/tools && make clean
-
-wireguard_tools-install:
-	install -D wireguard/src/tools/wg $(INSTALLDIR)/wireguard_tools/usr/sbin/wg
-	$(STRIP) $(INSTALLDIR)/wireguard_tools/usr/sbin/wg
 
 nfs-utils/stamp-h1:
 	cd nfs-utils && CPPFLAGS="$(EXTRACFLAGS) -Os" knfsd_cv_bsd_signals=no \

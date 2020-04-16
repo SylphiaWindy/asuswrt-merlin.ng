@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -102,6 +102,7 @@ void ubus_init()
           my_syslog(LOG_ERR, _("Cannot add object to UBus: %s"), ubus_strerror(ret));
           error_logged = 1;
         }
+      ubus_destroy(ubus);
       return;
     }
 
