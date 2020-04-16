@@ -7134,16 +7134,16 @@ ipset_arm-clean:
 	-@rm -rf ipset_arm/Makefile ipset_arm/stamp-h1
 
 wireguard_tools: libmnl
-	cd wireguard/src/tools && CC=$(CC) \
+	cd wireguard-tools/src && CC=$(CC) \
 	CFLAGS="-I$(TOP)/libmnl/staged/usr/include" LDFLAGS="-L$(TOP)/libmnl/staged/usr/lib -lmnl" \
 	make
 
 wireguard_tools-clean:
-	cd wireguard/src/tools && make clean
+	cd wireguard-tools/src && make clean
 
 wireguard_tools-install:
-	install -D wireguard/src/tools/wg $(INSTALLDIR)/wireguard_tools/usr/sbin/wg
-	$(STRIP) $(INSTALLDIR)/wireguard_tools/usr/sbin/wg
+	install -D wireguard-tools/src/wg $(INSTALLDIR)/wireguard-tools/usr/sbin/wg
+	$(STRIP) $(INSTALLDIR)/wireguard-tools/usr/sbin/wg
 
 nfs-utils/stamp-h1:
 	cd nfs-utils && CPPFLAGS="$(EXTRACFLAGS) -Os" knfsd_cv_bsd_signals=no \
