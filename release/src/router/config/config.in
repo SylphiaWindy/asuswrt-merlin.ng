@@ -1958,6 +1958,10 @@ config RTCONFIG_LIBASUSLOG
 	bool "asuslog library for debug"
 	default n
 
+config RTCONFIG_WIREGURAD_TOOLS
+	bool "Tools for Wireguard - Fast and secure kernelspace VPN (rt-ac86u only)"
+	default n
+
 config RTCONFIG_ETHOBD
 	bool "ethernet onboarding for Aimash."
 	default n
