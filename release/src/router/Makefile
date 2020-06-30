@@ -1258,6 +1258,10 @@ obj-y += libconfuse
 obj-y += wsdd2
 obj-$(RTCONFIG_BWDPI) += faketc
 
+ifeq ($(HND_ROUTER),y)
+obj-$(RTCONFIG_WIREGURAD_TOOLS) += libmnl wireguard-tools
+endif
+
 ifneq ($(HND_ROUTER),y)
 obj-y += cstats
 endif
@@ -7149,6 +7153,18 @@ ipset_arm-clean:
 	-@$(MAKE) -C ipset_arm clean
 	-@$(MAKE) -C ipset_arm modules_clean
 	-@rm -rf ipset_arm/Makefile ipset_arm/stamp-h1
+
+wireguard-tools: libmnl
+	cd wireguard-tools/src && CC=$(CC) \
+	CFLAGS="-I$(TOP)/libmnl/staged/usr/include" LDFLAGS="-L$(TOP)/libmnl/staged/usr/lib -lmnl" \
+	make
+
+wireguard-tools-clean:
+	cd wireguard-tools/src && make clean
+
+wireguard-tools-install:
+	install -D wireguard-tools/src/wg $(INSTALLDIR)/wireguard-tools/usr/sbin/wg
+	$(STRIP) $(INSTALLDIR)/wireguard-tools/usr/sbin/wg
 
 nfs-utils/stamp-h1:
 	cd nfs-utils && CPPFLAGS="$(EXTRACFLAGS) -Os" knfsd_cv_bsd_signals=no \
