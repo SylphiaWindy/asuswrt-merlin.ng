@@ -142,7 +142,7 @@ load_geoip_cc(u_int16_t cc)
    if (!ginfo)
       return NULL;
 
-   ginfo->subnets = get_country_subnets(cc, &ginfo->count);
+   ginfo->subnets = (unsigned long) get_country_subnets(cc, &ginfo->count);
    ginfo->cc = cc;
 
    return ginfo;
@@ -253,9 +253,9 @@ geoip_parse(int c, char **argv, int invert, unsigned int *flags,
     if (invert)
        *flags |= IPT_GEOIP_INV;
 
-    info->count = parse_geoip_cc(argv[optind-1], info->cc, info->mem);
+    info->count = parse_geoip_cc(argv[optind-1], info->cc, (struct geoip_info **)(unsigned long)info->mem);
     info->flags = *flags;
-    info->refcount = NULL;
+    info->refcount = 0;
     //info->fini = &geoip_free;
 
     return 1;

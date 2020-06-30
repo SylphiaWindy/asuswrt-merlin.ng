@@ -40,16 +40,16 @@ static struct geoip_info *add_node(struct geoip_info *memcpy)
       return NULL;
 
    s = (struct geoip_subnet *)kmalloc(p->count * sizeof(struct geoip_subnet), GFP_KERNEL);
-   if ((s == NULL) || (copy_from_user(s, p->subnets, p->count * sizeof(struct geoip_subnet)) != 0))
+   if ((s == NULL) || (copy_from_user(s, (const void __user*)(unsigned long)p->subnets, p->count * sizeof(struct geoip_subnet)) != 0))
       return NULL;
-  
+
    spin_lock_bh(&geoip_lock);
 
-   p->subnets = s;
+   p->subnets = (unsigned long)s;
    p->ref = 1;
-   p->next = head;
-   p->prev = NULL;
-   if (p->next) p->next->prev = p;
+   p->next = (unsigned long)head;
+   p->prev = 0;
+   if (p->next) ((struct geoip_info *)(unsigned long)p->next)->prev = (unsigned long)p;
    head = p;
 
    spin_unlock_bh(&geoip_lock);
@@ -59,27 +59,27 @@ static struct geoip_info *add_node(struct geoip_info *memcpy)
 static void remove_node(struct geoip_info *p)
  {
    spin_lock_bh(&geoip_lock);
-   
+
    if (p->next) { /* Am I following a node ? */
-      p->next->prev = p->prev;
-      if (p->prev) p->prev->next = p->next; /* Is there a node behind me ? */
-      else head = p->next; /* No? Then I was the head */
+      ((struct geoip_info *)(unsigned long)p->next)->prev = p->prev;
+      if (p->prev) ((struct geoip_info *)(unsigned long)p->prev)->next = p->next; /* Is there a node behind me ? */
+      else head = (struct geoip_info *)(unsigned long)p->next; /* No? Then I was the head */
    }
-   
-   else 
+
+   else
       if (p->prev) /* Is there a node behind me ? */
-         p->prev->next = NULL;
+         ((struct geoip_info *)(unsigned long)p->prev)->next = 0;
       else
-         head = NULL; /* No, we're alone */
+         head = 0; /* No, we're alone */
 
    /* So now am unlinked or the only one alive, right ?
     * What are you waiting ? Free up some memory!
     */
 
-   kfree(p->subnets);
+   kfree((struct geoip_subnet*)(unsigned long)p->subnets);
    kfree(p);
-   
-   spin_unlock_bh(&geoip_lock);   
+
+   spin_unlock_bh(&geoip_lock);
    return;
 }
 
@@ -87,13 +87,13 @@ static struct geoip_info *find_node(u_int16_t cc)
 {
    struct geoip_info *p = head;
    spin_lock_bh(&geoip_lock);
-   
+
    while (p) {
       if (p->cc == cc) {
-         spin_unlock_bh(&geoip_lock);         
+         spin_unlock_bh(&geoip_lock);
          return p;
       }
-      p = p->next;
+      p = (struct geoip_info *)(unsigned long)p->next;
    }
    spin_unlock_bh(&geoip_lock);
    return NULL;
@@ -113,27 +113,27 @@ static bool xt_geoip_mt(const struct sk_buff *skb, struct xt_action_param *par)
 
    spin_lock_bh(&geoip_lock);
    for (i = 0; i < info->count; i++) {
-      if ((node = info->mem[i]) == NULL) {
+      if ((node = (struct geoip_info *)(unsigned long)info->mem[i]) == NULL) {
          printk(KERN_ERR "xt_geoip: what the hell ?? '%c%c' isn't loaded into memory... skip it!\n",
                COUNTRY(info->cc[i]));
-         
+
          continue;
       }
 
       for (j = 0; j < node->count; j++)
-         if ((ip > node->subnets[j].begin) && (ip < node->subnets[j].end)) {
+         if ((ip > ((struct geoip_subnet*)(unsigned long)node->subnets)[j].begin) && (ip < ((struct geoip_subnet*)(unsigned long)node->subnets)[j].end)) {
             spin_unlock_bh(&geoip_lock);
             return (info->flags & XT_GEOIP_INV) ? 0 : 1;
          }
    }
-   
+
    spin_unlock_bh(&geoip_lock);
    return (info->flags & XT_GEOIP_INV) ? 1 : 0;
 }
 
 static int xt_geoip_mt_checkentry(const struct xt_mtchk_param *par)
 {
-   
+
    struct xt_geoip_match_info *info = par->matchinfo;
    struct geoip_info *node;
    u_int8_t i;
@@ -150,18 +150,18 @@ static int xt_geoip_mt_checkentry(const struct xt_mtchk_param *par)
     * initialized this entry. Increase a
     * refcount to prevent destroy() of
     * this entry. */
-   if (info->refcount != NULL) {
-      atomic_inc((atomic_t *)info->refcount);
+   if ((atomic_t *)(unsigned long)info->refcount != NULL) {
+      atomic_inc((atomic_t *)(unsigned long)info->refcount);
       return 0;
    }
-   
-   
+
+
    for (i = 0; i < info->count; i++) {
-     
+
       if ((node = find_node(info->cc[i])) != NULL)
             atomic_inc((atomic_t *)&node->ref);   //increase the reference
       else
-         if ((node = add_node(info->mem[i])) == NULL) {
+         if ((node = add_node((struct geoip_info *)(unsigned long)info->mem[i])) == NULL) {
             printk(KERN_ERR
                   "xt_geoip: unable to load '%c%c' into memory\n",
                   COUNTRY(info->cc[i]));
@@ -182,7 +182,7 @@ static int xt_geoip_mt_checkentry(const struct xt_mtchk_param *par)
        * This avoids searching for a node in the match() and
        * destroy() functions.
        */
-      info->mem[i] = node;
+      info->mem[i] = (unsigned long)node;
    }
 
    /* We allocate some memory and give info->refcount a pointer
@@ -190,13 +190,13 @@ static int xt_geoip_mt_checkentry(const struct xt_mtchk_param *par)
     * different from the one used by destroy().
     * For explanation, see http://www.mail-archive.com/netfilter-devel@lists.samba.org/msg00625.html
     */
-   info->refcount = kmalloc(sizeof(u_int8_t), GFP_KERNEL);
-   if (info->refcount == NULL) {
+   info->refcount = (unsigned long)kmalloc(sizeof(u_int8_t), GFP_KERNEL);
+   if ((atomic_t *)(unsigned long)info->refcount == NULL) {
       printk(KERN_ERR "xt_geoip: failed to allocate `refcount' memory\n");
       return -ENOMEM;
    }
-   *(info->refcount) = 1;
-   
+   *((u_int8_t *)(unsigned long)info->refcount) = 1;
+
    return 0;
 }
 
@@ -205,28 +205,28 @@ static void xt_geoip_mt_destroy(const struct xt_mtdtor_param *par)
    struct xt_geoip_match_info *info = par->matchinfo;
    struct geoip_info *node; /* this keeps the code sexy */
    u_int8_t i;
- 
+
    /* Decrease the previously increased refcount in checkentry()
     * If it's equal to 1, we know this entry is just moving
     * but not removed. We simply return to avoid useless destroy()
     * proce	ssing.
     */
-   atomic_dec((atomic_t *)info->refcount);
-   if (*info->refcount)
+   atomic_dec((atomic_t *)(unsigned long)info->refcount);
+   if (*(u_int8_t *)(unsigned long)info->refcount)
       return;
 
    /* Don't leak my memory, you idiot.
     * Bug found with nfsim.. the netfilter's best
     * friend. --peejix */
-   kfree(info->refcount);
- 
+   kfree((atomic_t *)(unsigned long)info->refcount);
+
    /* This entry has been removed from the table so
     * decrease the refcount of all countries it is
     * using.
     */
-  
+
    for (i = 0; i < info->count; i++)
-      if ((node = info->mem[i]) != NULL) {
+      if ((node = (struct geoip_info *)(unsigned long)info->mem[i]) != NULL) {
          atomic_dec((atomic_t *)&node->ref);
 
          /* Free up some memory if that node isn't used
