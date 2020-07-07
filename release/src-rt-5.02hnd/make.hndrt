@@ -354,7 +354,7 @@ prek $(KERNEL_DIR)/.pre_kernelbuild: $(BCM_SWVERSION_FILE) $(BCM_KF_KCONFIG_FILE
 	touch $@;
 
 kernelbuild: rdp_link shared_link
-	CURRENT_ARCH=$(KERNEL_ARCH) TOOLCHAIN_TOP= $(MAKE) inner_kernelbuild 
+	CPU_V7=y EXTRACFLAGS="-mcpu=cortex-a53 -mfloat-abi=hard -mfpu=neon-fp-armv8 -mneon-for-64bits -DHND_ROUTER -DCONFIG_BCMWL5 -D__ARM_ARCH_8A__" CURRENT_ARCH=$(KERNEL_ARCH) TOOLCHAIN_TOP= $(MAKE) inner_kernelbuild 
 
 inner_kernelbuild: pre_kernelbuild hnd_dongle
 	cd $(KERNEL_DIR); $(MAKE) -j $(ACTUAL_MAX_JOBS)
