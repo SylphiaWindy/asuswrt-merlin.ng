@@ -85,7 +85,7 @@ const int allowed_local_icmpv6[] =
 #endif
 
 #ifdef RTCONFIG_VPN_FUSION
-extern int write_vpn_fusion(FILE *fp, const char* lan_ip);
+extern int write_vpn_fusion_nat(FILE *fp, const char* lan_ip);
 #endif
 
 char *mac_conv(char *mac_name, int idx, char *buf);	// oleg patch
@@ -1664,7 +1664,7 @@ void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char 
 		wanx_rules = 1;
 #endif
 #ifdef RTCONFIG_OPEN_NAT
-		fprintf(fp, "-A PREROUTING -d %s -j GAME_VSERVER\n", wan_ip);
+		fprintf(fp, "-A PREROUTING -d %s -j GAME_VSERVER\n", wanx_ip);
 #endif
 		fprintf(fp, "-A PREROUTING -d %s -j VSERVER\n", wanx_ip);
 	}
@@ -1689,7 +1689,7 @@ void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char 
 #endif
 
 #ifdef RTCONFIG_VPN_FUSION
-        write_vpn_fusion(fp, lan_ip);
+        write_vpn_fusion_nat(fp, lan_ip);
 #endif
 
 #ifdef RTCONFIG_YANDEXDNS
@@ -6482,7 +6482,7 @@ int start_firewall(int wanunit, int lanunit)
 #endif
 
 #ifdef RTCONFIG_OPENVPN
-	run_ovpn_fw_script();
+	ovpn_run_fw_scripts();
 #endif
 
 	if (!nvram_get_int("ttl_inc_enable") && !nvram_get_int("ttl_spoof_enable")) {
@@ -6534,37 +6534,3 @@ void enable_ip_forward(void)
 #endif
 #endif
 }
-
-#if !defined(HND_ROUTER)
-void ipt_account(FILE *fp, char *interface) {
-	struct in_addr ipaddr, netmask, network;
-	char netaddrnetmask[] = "255.255.255.255/255.255.255.255 ";
-	int unit;
-
-	inet_aton(nvram_safe_get("lan_ipaddr"), &ipaddr);
-	inet_aton(nvram_safe_get("lan_netmask"), &netmask);
-
-	// bitwise AND of ip and netmask gives the network
-	network.s_addr = ipaddr.s_addr & netmask.s_addr;
-
-	sprintf(netaddrnetmask, "%s/%s", inet_ntoa(network), nvram_safe_get("lan_netmask"));
-
-	// If we are provided an interface (usually a VPN interface) then use it as WAN.
-	if (interface){
-		fprintf(fp, "iptables -A ipttolan -i %s -m account --aaddr %s --aname lan -j RETURN\n", interface, netaddrnetmask);
-		fprintf(fp, "iptables -A iptfromlan -o %s -m account --aaddr %s --aname lan -j RETURN\n", interface, netaddrnetmask);
-
-	} else {	// Create rules for every WAN interfaces available
-		fprintf(fp, "-I FORWARD -i br0 -j iptfromlan\n");
-		fprintf(fp, "-I FORWARD -o br0 -j ipttolan\n");
-		for (unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; unit++) {
-			if ((get_dualwan_by_unit(unit) != WANS_DUALWAN_IF_NONE) && (strlen(get_wan_ifname(unit)))) {
-				fprintf(fp, "-A ipttolan -i %s -m account --aaddr %s --aname lan -j RETURN\n", get_wan_ifname(unit), netaddrnetmask);
-				fprintf(fp, "-A iptfromlan -o %s -m account --aaddr %s --aname lan -j RETURN\n", get_wan_ifname(unit), netaddrnetmask);
-			}
-		}
-	}
-}
-
-#endif
-

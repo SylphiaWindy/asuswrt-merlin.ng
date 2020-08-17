@@ -22,12 +22,14 @@
  * proprietary libvpn, either re-implemented, or
  * implemented as wrappers around AM's functions.
  * Also includes additional functions developed
- * for Asuswrt-Merlin.
+ * for Asuswrt-Merlin's OpenVPN support.
  */
 
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <dirent.h>
 #include <string.h>
 #include <time.h>
@@ -44,6 +46,8 @@
 #include <shared.h>
 
 #include "openvpn_config.h"
+#include "openvpn_control.h"
+#include "openvpn_setup.h"
 
 extern struct nvram_tuple router_defaults[];
 
@@ -124,33 +128,7 @@ void reset_ovpn_setting(ovpn_type_t type, int unit, int full){
 }
 
 
-void update_ovpn_status(ovpn_type_t type, int unit, ovpn_status_t status_type, ovpn_errno_t err_no)
-{
-	char varname[32];
-
-	sprintf(varname, "vpn_%s%d_state", (type == OVPN_TYPE_SERVER ? "server" : "client"), unit);
-	nvram_set_int(varname, status_type);
-        sprintf(varname, "vpn_%s%d_errno", (type == OVPN_TYPE_SERVER ? "server" : "client"), unit);
-        nvram_set_int(varname, err_no);
-}
-
-ovpn_status_t get_ovpn_status(ovpn_type_t type, int unit)
-{
-	char varname[32];
-
-	sprintf(varname, "vpn_%s%d_state", (type == OVPN_TYPE_SERVER ? "server" : "client"), unit);
-	return nvram_get_int(varname);
-
-}
-
-ovpn_errno_t get_ovpn_errno(ovpn_type_t type, int unit)
-{
-	char varname[32];
-
-	sprintf(varname, "vpn_%s%d_errno", (type == OVPN_TYPE_SERVER ? "server" : "client"), unit);
-	return nvram_get_int(varname);
-}
-
+/* Get filename for cert/key storage in jffs */
 char *get_ovpn_filename(ovpn_type_t type, int unit, ovpn_key_t key_type, char *buf, size_t buf_len)
 {
 	char *typeStr, *keyStr;
@@ -440,143 +418,162 @@ int set_ovpn_custom(ovpn_type_t type, int unit, char* buffer)
 	return -1;
 }
 
-// Determine how to handle dnsmasq server list based on
-// highest active dnsmode
-int get_max_dnsmode() {
-	int unit, maxlevel = 0, level;
-	char filename[40];
-	char varname[32];
 
-	for( unit = 1; unit <= OVPN_CLIENT_MAX; unit++ ) {
-		sprintf(filename, "/etc/openvpn/dns/client%d.resolv", unit);
-		if (f_exists(filename)) {
-			sprintf(varname, "vpn_client%d_", unit);
-			level = nvram_pf_get_int(varname, "adns");
+int ovpn_write_key(ovpn_type_t type, int unit, ovpn_key_t key_type) {
+	FILE *fp;
+	char buffer[8192];
 
-			// Ignore exclusive mode if policy mode is also enabled
-			if ((nvram_pf_get_int(varname, "rgw") >= OVPN_RGW_POLICY ) && (level == OVPN_DNSMODE_EXCLUSIVE))
-				continue;
-
-			// Only return the highest active level, so one exclusive client
-			// will override a relaxed client.
-			if (level > maxlevel) maxlevel = level;
-		}
+	if (ovpn_key_exists(type, unit, key_type)) {
+		fp = fopen(ovpn_get_runtime_filename(type, unit, key_type, buffer, sizeof(buffer)), "w");
+		if (!fp)
+			return -1;
+		chmod(buffer, S_IRUSR|S_IWUSR);
+		fprintf(fp, "%s", get_ovpn_key(type, unit, key_type, buffer, sizeof(buffer)));
+		fclose(fp);
+		return 0;
 	}
-	return maxlevel;
+	return -1;
 }
 
 
-void write_ovpn_resolv_dnsmasq(FILE* dnsmasq_conf) {
-	int unit;
-	char filename[40], prefix[16];
-	char *buffer;
+ovpn_cconf_t *ovpn_get_cconf(int unit) {
+	ovpn_cconf_t *cconf;
+	char prefix[16], buffer[10000];
 
-	vpnlog(VPN_LOG_EXTRA, "Adding DNS entries...");
+	cconf = malloc(sizeof (ovpn_cconf_t));
+	if (!cconf) return NULL;
 
-	for (unit = 1; unit <= OVPN_CLIENT_MAX; unit++) {
-		sprintf(filename, "/etc/openvpn/dns/client%d.resolv", unit);
-		if (f_exists(filename)) {
-			sprintf(prefix, "vpn_client%d_", unit);
 
-			// Don't add servers if policy routing is enabled and dns mode set to "Exclusive"
-			// Handled by iptables on a case-by-case basis
-			if ((nvram_pf_get_int(prefix, "rgw") >= OVPN_RGW_POLICY ) && (nvram_pf_get_int(prefix, "adns") == OVPN_DNSMODE_EXCLUSIVE))
-				continue;
+	snprintf(prefix, sizeof(prefix), "vpn_client%d_", unit);
 
-			vpnlog(VPN_LOG_INFO,"Adding DNS entries from %s", filename);
+	strlcpy(buffer, nvram_pf_safe_get(prefix, "if"), sizeof (buffer));
+	if (!strcmp(buffer, "tap"))
+		cconf->if_type = OVPN_IF_TAP;
+	else
+		cconf->if_type = OVPN_IF_TUN;
+	snprintf(cconf->if_name, sizeof (cconf->if_name), "%s%d", buffer, unit + OVPN_CLIENT_BASEIF);
 
-			buffer = read_whole_file(filename);
-			if (buffer) {
-				fwrite(buffer, 1, strlen(buffer),dnsmasq_conf);
-				free(buffer);
-			}
-		}
-	}
-	vpnlog(VPN_LOG_EXTRA, "Done with DNS entries...");
+	if (!strcmp(nvram_pf_safe_get(prefix, "crypt"), "secret"))
+		cconf->auth_mode = OVPN_AUTH_STATIC;
+	else
+		cconf->auth_mode = OVPN_AUTH_TLS;
+
+	cconf->bridge = nvram_pf_get_int(prefix, "bridge");
+	cconf->nat = nvram_pf_get_int(prefix, "nat");
+
+	cconf->userauth = nvram_pf_get_int(prefix, "userauth");
+	cconf->useronly = nvram_pf_get_int(prefix, "useronly");
+
+	strlcpy(cconf->proto, nvram_pf_safe_get(prefix, "proto"), sizeof(cconf->proto));
+	strlcpy(cconf->addr,  nvram_pf_safe_get(prefix, "addr"), sizeof(cconf->addr));
+	cconf->port = nvram_pf_get_int(prefix, "port");
+
+	strlcpy(cconf->local, nvram_pf_safe_get(prefix, "local"), sizeof(cconf->local));
+	strlcpy(cconf->remote, nvram_pf_safe_get(prefix, "remote"), sizeof(cconf->remote));
+	strlcpy(cconf->netmask, nvram_pf_safe_get(prefix, "nm"), sizeof(cconf->netmask));
+
+	cconf->retry = nvram_pf_get_int(prefix, "connretry");
+
+	strlcpy(cconf->comp, nvram_pf_safe_get(prefix, "comp"), sizeof (cconf->comp));
+
+	cconf->ncp = nvram_pf_get_int(prefix, "ncp_enable");
+	strlcpy(cconf->ncp_ciphers, nvram_pf_safe_get(prefix, "ncp_ciphers"), sizeof (cconf->ncp_ciphers));
+	strlcpy(cconf->cipher, nvram_pf_safe_get(prefix, "cipher"), sizeof(cconf->cipher));
+
+	strlcpy(cconf->digest, nvram_pf_safe_get(prefix, "digest"), sizeof(cconf->digest));
+
+	cconf->redirect_gateway = nvram_pf_get_int(prefix, "rgw");
+	strlcpy(cconf->gateway, nvram_pf_safe_get(prefix, "gw"), sizeof(cconf->gateway));
+
+	cconf->verb = nvram_pf_get_int(prefix, "verb");
+
+	cconf->reneg = nvram_pf_get_int(prefix, "reneg");
+
+	cconf->direction = nvram_pf_get_int(prefix, "hmac");
+	cconf->tlscrypt = (cconf->direction == 3 ? 1 : 0);
+	cconf->verify_x509_type = nvram_pf_get_int(prefix, "tlsremote");
+	strlcpy(cconf->verify_x509_name, nvram_pf_safe_get(prefix, "cn"), sizeof(cconf->verify_x509_name));
+
+	cconf->adns = nvram_pf_get_int(prefix, "adns");
+
+	strlcpy(cconf->username, nvram_pf_safe_get(prefix, "username"), sizeof(cconf->username));
+	strlcpy(cconf->password, nvram_pf_safe_get(prefix, "password"), sizeof(cconf->password));
+
+	cconf->fw = nvram_pf_get_int(prefix, "fw");
+
+	strlcpy(cconf->custom, get_ovpn_custom(OVPN_TYPE_CLIENT, unit, buffer, sizeof (buffer)), sizeof(cconf->custom));
+
+	return cconf;
 }
 
 
-void write_ovpn_dnsmasq_config(FILE* dnsmasq_conf) {
-	char prefix[16], filename[40], varname[32];
-	int unit, modeset = 0;
-	char *buffer;
+ovpn_sconf_t *ovpn_get_sconf(int unit){
+	ovpn_sconf_t *sconf;
+	char prefix[16], buffer[10000];
 
-	// Add interfaces for servers that provide DNS services
-	for (unit = 1; unit <= OVPN_SERVER_MAX; unit++) {
-		sprintf(prefix, "vpn_server%d_", unit);
-		if (nvram_pf_get_int(prefix, "pdns") ) {
-			vpnlog(VPN_LOG_EXTRA, "Adding server %d interface to dns config", unit);
-			fprintf(dnsmasq_conf, "interface=%s%d\n", nvram_pf_safe_get(prefix, "if"), OVPN_SERVER_BASEIF + unit);
-		}
-	}
+	sconf = malloc(sizeof (ovpn_sconf_t));
+	if (!sconf) return NULL;
 
-	for (unit = 1; unit <= OVPN_CLIENT_MAX; unit++) {
-		// Add strict-order if any client is set to "strict" and we haven't done so yet
-		if (!modeset) {
-			sprintf(filename, "/etc/openvpn/dns/client%d.resolv", unit);
-			if (f_exists(filename)) {
-				vpnlog(VPN_LOG_EXTRA, "Checking ADNS settings for client %d", unit);
-				snprintf(varname, sizeof(varname), "vpn_client%d_adns", unit);
-				if (nvram_get_int(varname) == OVPN_DNSMODE_STRICT) {
-					vpnlog(VPN_LOG_INFO, "Adding strict-order to dnsmasq config for client %d", unit);
-					fprintf(dnsmasq_conf, "strict-order\n");
-					modeset = 1;
-				}
-			}
 
-		}
+	snprintf(prefix, sizeof(prefix), "vpn_server%d_", unit);
 
-		// Add WINS entries if any client provides it
-		sprintf(filename, "/etc/openvpn/dns/client%d.conf", unit);
-		if (f_exists(filename)) {
-			vpnlog(VPN_LOG_INFO, "Adding Dnsmasq config from %s", filename);
-			buffer = read_whole_file(filename);
-			if (buffer) {
-				fwrite(buffer, 1, strlen(buffer),dnsmasq_conf);
-				free(buffer);
-			}
-		}
-	}
+	// Determine interface
+	strlcpy(buffer, nvram_pf_safe_get(prefix, "if"), sizeof (buffer));
+
+	if (!strcmp(buffer, "tap"))
+		sconf->if_type = OVPN_IF_TAP;
+	else
+		sconf->if_type = OVPN_IF_TUN;
+
+	snprintf(sconf->if_name, sizeof (sconf->if_name), "%s%d", buffer, unit + OVPN_SERVER_BASEIF);
+
+	if (!strcmp(nvram_pf_safe_get(prefix, "crypt"), "secret"))
+		sconf->auth_mode = OVPN_AUTH_STATIC;
+	else
+		sconf->auth_mode = OVPN_AUTH_TLS;
+
+
+	strlcpy(sconf->network, nvram_pf_safe_get(prefix, "sn"), sizeof(sconf->network));
+	strlcpy(sconf->netmask,	nvram_pf_safe_get(prefix, "nm"), sizeof(sconf->netmask));
+	sconf->dhcp = nvram_pf_get_int(prefix, "dhcp");
+	strlcpy(sconf->pool_start, nvram_pf_safe_get(prefix, "r1"), sizeof(sconf->pool_start));
+	strlcpy(sconf->pool_end, nvram_pf_safe_get(prefix, "r2"), sizeof(sconf->pool_end));
+	strlcpy(sconf->local, nvram_pf_safe_get(prefix, "local"), sizeof(sconf->local));
+	strlcpy(sconf->remote, nvram_pf_safe_get(prefix, "remote"), sizeof(sconf->remote));
+
+	strlcpy(sconf->proto, nvram_pf_safe_get(prefix, "proto"), sizeof (sconf->proto));
+	sconf->port = nvram_pf_get_int(prefix, "port");
+
+	sconf->ncp = nvram_pf_get_int(prefix, "ncp_enable");
+	strlcpy(sconf->ncp_ciphers, nvram_pf_safe_get(prefix, "ncp_ciphers"), sizeof (sconf->ncp_ciphers));
+	strlcpy(sconf->cipher, nvram_pf_safe_get(prefix, "cipher"), sizeof (sconf->cipher));
+	strlcpy(sconf->digest, nvram_pf_safe_get(prefix, "digest"), sizeof (sconf->digest));
+
+	strlcpy(sconf->comp, nvram_pf_safe_get(prefix, "comp"), sizeof (sconf->comp));
+
+	sconf->verb = nvram_pf_get_int(prefix, "verb");
+
+	sconf->push_lan = nvram_pf_get_int(prefix, "client_access");
+
+	strlcpy(sconf->lan_ipaddr, nvram_safe_get("lan_ipaddr"), sizeof(sconf->lan_ipaddr));
+	strlcpy(sconf->lan_netmask, nvram_safe_get("lan_netmask"), sizeof(sconf->lan_netmask));
+
+	sconf->ccd = nvram_pf_get_int(prefix, "ccd");
+	sconf->c2c = nvram_pf_get_int(prefix, "c2c");
+	sconf->ccd_excl = nvram_pf_get_int(prefix, "ccd_excl");
+	strlcpy(sconf->ccd_val, nvram_pf_safe_get(prefix, "ccd_val"), sizeof(sconf->ccd_val));
+
+	sconf->push_dns = nvram_pf_get_int(prefix, "pdns");
+
+	sconf->direction = nvram_pf_get_int(prefix, "hmac");
+	sconf->tlscrypt = (sconf->direction == 3 ? 1 : 0);
+
+	sconf->userauth = nvram_pf_get_int(prefix, "userpass_auth");
+	sconf->useronly = nvram_pf_get_int(prefix, "igncrt");
+
+	sconf->tls_keysize = nvram_pf_get_int(prefix, "tls_keysize");
+
+	strlcpy(sconf->custom, get_ovpn_custom(OVPN_TYPE_SERVER, unit, buffer, sizeof (buffer)), sizeof(sconf->custom));
+
+	return sconf;
 }
-
-char *get_ovpn_remote_address(char *buf, int len) {
-	const char *address;
-	char hostname[64];
-
-	strlcpy(hostname, nvram_safe_get("ddns_hostname_x"), sizeof (hostname));
-
-	if (nvram_get_int("ddns_enable_x") && nvram_get_int("ddns_status") &&
-	    *hostname &&
-	    strcmp(hostname, "all.dnsomatic.com") &&
-	    nvram_invmatch("ddns_server_x", "WWW.TUNNELBROKER.NET") )
-	{
-		if (nvram_match("ddns_server_x","WWW.NAMECHEAP.COM"))
-			snprintf(buf, len, "%s.%s", hostname, nvram_safe_get("ddns_username_x"));
-		else
-			strlcpy(buf, hostname, len);
-	}
-	else {
-		address = get_wanip();
-		if (inet_addr_(address) == INADDR_ANY)
-			address = "0.0.0.0";
-		strlcpy(buf, address, len);
-	}
-
-	return buf;
-}
-
-
-void update_ovpn_profie_remote()
-{
-	char file_path[128], address[64], buffer[256];
-	int unit;
-
-	for (unit = 1; unit <= OVPN_SERVER_MAX; unit++) {
-		snprintf(file_path, sizeof(file_path), "/etc/openvpn/server%d/client.ovpn", unit);
-		if (f_exists(file_path)) {
-			snprintf(buffer, sizeof(buffer), "sed -i 's/remote [A-Za-z0-9.-]*/remote %s/ ' %s", get_ovpn_remote_address(address, sizeof(address)), file_path);
-			system(buffer);
-		}
-	}
-}
-
