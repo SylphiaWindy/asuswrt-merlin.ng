@@ -1471,6 +1471,10 @@ obj-$(RTCONFIG_TELENET) += lanauth
 obj-y += wsdd2
 #obj-$(RTCONFIG_BWDPI) += faketc
 
+ifeq ($(HND_ROUTER),y)
+obj-$(RTCONFIG_WIREGURAD_TOOLS) += libmnl wireguard-tools
+endif
+
 ifneq ($(HND_ROUTER),y)
 obj-y += cstats
 endif
@@ -7686,6 +7690,18 @@ ipset-6-clean:
 	-@$(MAKE) -C ipset-6 clean
 	-@$(MAKE) -C ipset-6 modules_clean
 	-@rm -rf ipset-6/Makefile ipset-6/stamp-h1
+
+wireguard-tools: libmnl
+	cd wireguard-tools/src && CC=$(CC) \
+	CFLAGS="-I$(TOP)/libmnl/staged/usr/include" LDFLAGS="-L$(TOP)/libmnl/staged/usr/lib -lmnl" \
+	make
+
+wireguard-tools-clean:
+	cd wireguard-tools/src && make clean
+
+wireguard-tools-install:
+	install -D wireguard-tools/src/wg $(INSTALLDIR)/wireguard-tools/usr/sbin/wg
+	$(STRIP) $(INSTALLDIR)/wireguard-tools/usr/sbin/wg
 
 nfs-utils/stamp-h1:
 	cd nfs-utils && CPPFLAGS="$(EXTRACFLAGS) -Os" knfsd_cv_bsd_signals=no \
