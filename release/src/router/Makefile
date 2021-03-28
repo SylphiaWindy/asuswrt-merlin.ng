@@ -7691,9 +7691,9 @@ ipset-6-clean:
 	-@$(MAKE) -C ipset-6 modules_clean
 	-@rm -rf ipset-6/Makefile ipset-6/stamp-h1
 
-wireguard-tools: libmnl
+wireguard-tools: libmnl-1.0.4
 	cd wireguard-tools/src && CC=$(CC) \
-	CFLAGS="-I$(TOP)/libmnl/staged/usr/include" LDFLAGS="-L$(TOP)/libmnl/staged/usr/lib -lmnl" \
+	CFLAGS="-I$(TOP)/libmnl-1.0.4/include" LDFLAGS="-L$(TOP)/libmnl-1.0.4/src/.libs -lmnl" \
 	make
 
 wireguard-tools-clean:
