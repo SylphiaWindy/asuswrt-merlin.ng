@@ -2133,14 +2133,12 @@ config RTCONFIG_LIBASUSLOG
 	bool "asuslog library for debug"
 	default n
 
-<<<<<<< HEAD
 config RTCONFIG_BCM_CEVENTD
 	bool "BRCM Connectivity event generation support"
-=======
+	
 config RTCONFIG_WIREGURAD_TOOLS
 	bool "Tools for Wireguard - Fast and secure kernelspace VPN (rt-ac86u only)"
 	default n
->>>>>>> mainline-geoip-wg-kernel-cflags
 
 config RTCONFIG_ETHOBD
 	bool "ethernet onboarding for Aimash."
