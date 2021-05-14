@@ -2588,6 +2588,10 @@ define RouterOptions
 		else \
 			echo "# RTCONFIG_DFS_US is not set" >>$(1); \
 		fi; \
+		if [ "$(WIREGUARD)" = "y" ]; then \
+			sed -i "/RTCONFIG_WIREGURAD_TOOLS/d" $(1); \
+			echo "RTCONFIG_WIREGURAD_TOOLS=y" >>$(1); \
+		fi; \
 	fi; \
 	if [ "$(HND_ROUTER_AX)" = "y" ]; then \
 		sed -i "/RTCONFIG_HND_ROUTER_AX/d" $(1); \
