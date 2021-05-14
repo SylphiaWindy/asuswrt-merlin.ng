@@ -1,0 +1,6 @@
+[submodule "release/src/router/wireguard-linux-compat"]
+	path = release/src/router/wireguard-linux-compat
+	url = git://git.zx2c4.com/wireguard-linux-compat
+[submodule "release/src/router/wireguard-tools"]
+	path = release/src/router/wireguard-tools
+	url = git://git.zx2c4.com/wireguard-tools

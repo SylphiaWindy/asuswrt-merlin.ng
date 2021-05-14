@@ -2430,3 +2430,7 @@ config RTCONFIG_FRONTHAUL_DBG
 config RTCONFIG_MAX_RE_32
 	bool "max number of RE is 32"
 	default n
+
+config RTCONFIG_WIREGURAD_TOOLS
+	bool "Wireguard - Fast and secure kernel space VPN (HND Models only)"
+	default n
