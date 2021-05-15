@@ -48,7 +48,7 @@ static struct geoip_info *add_node(struct geoip_info *memcpy)
    p->subnets = (unsigned long)s;
    p->ref = 1;
    p->next = (unsigned long)head;
-   p->prev = NULL;
+   p->prev = 0;
    if (p->next) ((struct geoip_info*)(unsigned long)p->next)->prev = (unsigned long)p;
    head = p;
 
@@ -68,7 +68,7 @@ static void remove_node(struct geoip_info *p)
    
    else 
       if (p->prev) /* Is there a node behind me ? */
-          ((struct geoip_info*)(unsigned long)p->prev)->next = NULL;
+          ((struct geoip_info*)(unsigned long)p->prev)->next = 0;
       else
          head = NULL; /* No, we're alone */
 
@@ -76,7 +76,7 @@ static void remove_node(struct geoip_info *p)
     * What are you waiting ? Free up some memory!
     */
 
-   kfree(p->subnets);
+   kfree((void*)p->subnets);
    kfree(p);
    
    spin_unlock_bh(&geoip_lock);   
@@ -150,7 +150,7 @@ static int xt_geoip_mt_checkentry(const struct xt_mtchk_param *par)
     * initialized this entry. Increase a
     * refcount to prevent destroy() of
     * this entry. */
-   if (info->refcount != NULL) {
+   if ((void *)info->refcount != NULL) {
       atomic_inc((atomic_t *)(unsigned long)info->refcount);
       return 0;
    }
@@ -191,7 +191,7 @@ static int xt_geoip_mt_checkentry(const struct xt_mtchk_param *par)
     * For explanation, see http://www.mail-archive.com/netfilter-devel@lists.samba.org/msg00625.html
     */
    info->refcount = (unsigned long)kmalloc(sizeof(u_int8_t), GFP_KERNEL);
-   if (info->refcount == NULL) {
+   if ((void *)info->refcount == NULL) {
       printk(KERN_ERR "xt_geoip: failed to allocate `refcount' memory\n");
       return -ENOMEM;
    }
@@ -212,13 +212,13 @@ static void xt_geoip_mt_destroy(const struct xt_mtdtor_param *par)
     * proce	ssing.
     */
    atomic_dec((atomic_t *)(unsigned long)info->refcount);
-   if (*info->refcount)
+   if (*(u_int8_t *)info->refcount)
       return;
 
    /* Don't leak my memory, you idiot.
     * Bug found with nfsim.. the netfilter's best
     * friend. --peejix */
-   kfree(info->refcount);
+   kfree((void*)info->refcount);
  
    /* This entry has been removed from the table so
     * decrease the refcount of all countries it is
