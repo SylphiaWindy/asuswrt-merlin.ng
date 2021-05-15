@@ -40,7 +40,7 @@ static struct geoip_info *add_node(struct geoip_info *memcpy)
       return NULL;
 
    s = (struct geoip_subnet *)kmalloc(p->count * sizeof(struct geoip_subnet), GFP_KERNEL);
-   if ((s == NULL) || (copy_from_user(s, (const void struct geoip_subnet *)(unsigned long)p->subnets, p->count * sizeof(struct geoip_subnet)) != 0))
+   if ((s == NULL) || (copy_from_user(s, (const struct geoip_subnet *)(unsigned long)p->subnets, p->count * sizeof(struct geoip_subnet)) != 0))
       return NULL;
   
    spin_lock_bh(&geoip_lock);
