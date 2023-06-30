@@ -2760,6 +2760,10 @@ define RouterOptions
 		sed -i "/RTCONFIG_WLEXE/d" $(1); \
 		echo "RTCONFIG_WLEXE=y" >>$(1); \
 	fi;
+	if [ "$(CRYPTODEV)" = "y" ]; then \
+		sed -i "/RTCONFIG_CRYPTODEV/d" $(1); \
+		echo "RTCONFIG_CRYPTODEV=y" >>$(1); \
+	fi;	
 	if [ "$(BCM7)" = "y" ]; then \
 		sed -i "/RTCONFIG_BCM7/d" $(1); \
 		echo "RTCONFIG_BCM7=y" >>$(1); \

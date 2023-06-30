@@ -1599,6 +1599,7 @@ obj-$(RTCONFIG_OPENVPN) += ministun
 obj-$(RTCONFIG_DNSSEC) += $(if $(RTCONFIG_DNSSEC_OPENSSL),openssl,) $(if $(RTCONFIG_DNSSEC_NETTLE),nettle,)
 obj-$(RTCONFIG_SAMBA36X) += libiconv-1.14
 obj-$(RTCONFIG_TELENET) += lanauth
+obj-$(RTCONFIG_CRYPTODEV) += cryptodev-linux
 #ifeq ($(HND_ROUTER),y)
 #obj-y += jitterentropy-rngd
 #endif
@@ -8218,6 +8219,16 @@ wsdd2-install:
 
 wsdd2-clean:
 	$(MAKE) -C wsdd2 clean
+
+cryptodev-linux:
+	$(MAKE) -C $@ KERNEL_DIR=$(LINUXDIR) CC=$(CROSS_COMPILE_64)gcc RANLIB=$(CROSS_COMPILE_64)ranlib CFLAGS="-O3" \
+		prefix=$(LINUX_INC_DIR) CCOPTS="-march=armv8-a -mabi=lp64" ARCH="arm64" LD=$(CROSS_COMPILE_64)ld
+#              LDFLAGS="-ffunction-sections -fdata-sections -Wl,--gc-sections" CROSS_COMPILE=$(CROSS_COMPILE_64)
+
+cryptodev-linux-install:
+    @cp -f cryptodev-linux/cryptodev.ko $(INSTALLDIR)/../modules/lib/modules/4.1.27/extra/
+
+
 
 # End merlin components
 
