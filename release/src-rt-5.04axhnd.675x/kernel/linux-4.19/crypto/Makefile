@@ -159,4 +159,4 @@ crypto_simd-y := simd.o
 obj-$(CONFIG_CRYPTO_SIMD) += crypto_simd.o
 
 CONFIG_CRYPTODEV_LINUX:=y
-obj-\$(CONFIG_CRYPTODEV_LINUX) += cryptodev-linux/Makefile
+obj-$(CONFIG_CRYPTODEV_LINUX) += cryptodev-linux/
