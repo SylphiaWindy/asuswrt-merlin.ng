@@ -8226,9 +8226,7 @@ cryptodev-linux:
 #              LDFLAGS="-ffunction-sections -fdata-sections -Wl,--gc-sections" CROSS_COMPILE=$(CROSS_COMPILE_64)
 
 cryptodev-linux-install:
-    @cp -f cryptodev-linux/cryptodev.ko $(INSTALLDIR)/../modules/lib/modules/4.1.27/extra/
-
-
+		@cp -f cryptodev-linux/cryptodev.ko $(INSTALLDIR)/../modules/lib/modules/4.1.27/extra/
 
 # End merlin components
 
