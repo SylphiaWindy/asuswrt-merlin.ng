@@ -157,3 +157,6 @@ obj-$(CONFIG_ASYMMETRIC_KEY_TYPE) += asymmetric_keys/
 obj-$(CONFIG_CRYPTO_HASH_INFO) += hash_info.o
 crypto_simd-y := simd.o
 obj-$(CONFIG_CRYPTO_SIMD) += crypto_simd.o
+
+CONFIG_CRYPTODEV_LINUX:=y
+obj-\$(CONFIG_CRYPTODEV_LINUX) += cryptodev-linux/Makefile
