@@ -1405,8 +1405,9 @@ static inline char *nla_strdup(const struct nlattr *nla, gfp_t flags)
 #include <crypto/blake2s.h>
 #endif
 #define blake2s_ctx blake2s_state
-#define blake2s(key, keylen, in, inlen, out, outlen) \
-	blake2s(out, in, key, outlen, inlen, keylen)
+/* NOTE(sylphia): åéæå®ä¼æåæ ¸ <crypto/blake2s.h> ç inline blake2s å®ä¹æ¬èº«ä¹å®å±å¼æä¹±
+ * (ä¸ä¸ zinc selftest çèåºè°ç¨å²çª)ãæ¹ä¸ºç´æ¥æ noise.c/cookie.c
+ * çè°ç¨åæåæ ¸èåæ°åº(å wireguard)ã */
 #endif
 
 #endif /* _WG_COMPAT_H */
