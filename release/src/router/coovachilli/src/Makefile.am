@@ -192,7 +192,7 @@ main-opt.c: cmdline.c cmdline.h
 cmdline.c cmdline.h: cmdline.ggo cmdline.patch
 	cat $(CMDLINE) | gengetopt -C 
 	cp cmdline.c cmdline.c.orig
-	patch -p0 < cmdline.patch
+	patch -p0 -N -r - < cmdline.patch || true
 
 cmdline.mini.gen: cmdline.ggo 
 	sh cmdline.mini.sh > cmdline.mini.gen

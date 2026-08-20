@@ -11759,6 +11759,384 @@ endif
 
 $(obj-y) $(obj-n) $(obj-clean) $(obj-install): dummy
 
+# ===== 并行构建支持（自建，非上游）=====
+# 准备阶段内部顺序：原 all: clean-build kernel_header version fsbuild $(obj-y)
+# 五者并列无序，-j 下 clean-build 删 staging 与 fsbuild 建目录并发。
+# clean-build 变空操作。
+#
+# 它的原始 recipe 是 `rm -rf $(TARGETDIR)/[a-z]*` + `rm -rf $(BCM_FSBUILD_DIR)`，
+# 而 clean-build 是 phony（永远"过期"），**递归 make 的每个实例都会重跑一次**。
+# 于是实例 A 的 fsbuild 刚建好 fs.install/lib、wlcsm 正在往里 install，
+# 实例 B 的 clean-build 又把整个 fs.install 删掉：
+#   install: cannot create regular file '.../fs.install/lib': No such file or directory
+# 顺序约束（$(obj-y): | clean-build ...）只在**单实例内**有效，跨实例无效 ——
+# 这也是第 1 轮 "Directory not empty" 和第 16 轮 "etc/fw is not a directory" 的同一根源。
+#
+# 我们总是从干净 clone 构建，没有旧产物需要清理，所以让它空转是安全的。
+clean-build: ;
+
+kernel_header version fsbuild: | clean-build
+$(obj-y): | clean-build kernel_header version fsbuild
+
+# install 阶段的目标同样要等 fsbuild —— 它创建 fs.install/{bin,sbin,usr/lib,...}。
+# 上游把 obj-install 与 obj-y 并列声明（`$(obj-y) ... $(obj-install): dummy`），
+# 我先前只约束了 obj-y，结果 install 阶段报
+# "install: failed to access '.../fs.install/bin': No such file or directory"。
+$(obj-install): | clean-build kernel_header version fsbuild
+
+# install 的先决条件同样是「写了次序但没声明顺序」：
+#   install package: $(obj-install) $(LINUXDIR)/.config gen_kernelrelease gen_target gen_gpl_excludes_router
+# gen_target 需要 fs.install/usr/lib，而那是各包 install 时创建的（fsbuild 不建它）。
+# -j 下并发 → chmod: cannot access '.../fs.install/usr/lib'。
+# 按上游的书写次序把顺序显式化。
+gen_kernelrelease gen_target gen_gpl_excludes_router: | $(obj-install)
+
+-include deps.mk
+
+# net-snmp 包内并行竞态：agent 子目录链接 -lnetsnmpagent（同包产出）时它还没好。
+# 危险之处是**错误被容忍、没有向上传播** —— router_all 报成功，
+# 直到顶层 libcreduction 检查库清单才发现 "Missing 32-bit libraries: libnetsnmpmibs.so.35"。
+# 它的 Makefile 是 configure 生成的，.NOTPARALLEL 覆盖不到，改用**定向** MAKEFLAGS。
+# 不用全局版：第 29 轮 $(obj-y): MAKEFLAGS := -j1 波及 libpng 的 CMake，
+# 日志深度从 60809 退到 38305。net-snmp 是 autotools，单独定向安全。
+net-snmp-5.7.2: MAKEFLAGS := -j1
+# install 目标同样要串行：真实失败在 libtool 的 install 阶段 relink ——
+#   libtool: install: warning: relinking `libnetsnmpmibs.la'
+#   ld: cannot find -lnetsnmpagent
+# libtool 安装 .la 时按**已安装位置**重链，libnetsnmpmibs 依赖 libnetsnmpagent，
+# 并行下后者还没装好。上一轮只给构建目标加了 -j1，漏了 install。
+net-snmp-5.7.2-install: MAKEFLAGS := -j1
+
+# ----- per-package configure/build 互斥锁（目标专属 SHELL）-----
+GeoIP-1.6.2/stamp-h1: SHELL := flock $(TOP)/.syl-conf-GeoIP-1.6.2.lock /bin/sh
+PMS_DBapis/stamp-h1: SHELL := flock $(TOP)/.syl-conf-PMS_DBapis.lock /bin/sh
+accel-pptp/stamp-h1: SHELL := flock $(TOP)/.syl-conf-accel-pptp.lock /bin/sh
+accel-pptpd/pptpd-1.3.3/Makefile: SHELL := flock $(TOP)/.syl-conf-accel-pptpd.lock /bin/sh
+asuswebstorage/stamp-h1: SHELL := flock $(TOP)/.syl-conf-asuswebstorage.lock /bin/sh
+avahi-0.6.31/Makefile: SHELL := flock $(TOP)/.syl-conf-avahi-0.6.31.lock /bin/sh
+avahi/Makefile: SHELL := flock $(TOP)/.syl-conf-avahi.lock /bin/sh
+aws-iot/Makefile: SHELL := flock $(TOP)/.syl-conf-aws-iot.lock /bin/sh
+bluez-5.56/stamp-h1: SHELL := flock $(TOP)/.syl-conf-bluez-5.56.lock /bin/sh
+bridge/stamp-h1: SHELL := flock $(TOP)/.syl-conf-bridge.lock /bin/sh
+c-ares-1.15.0/stamp-h1: SHELL := flock $(TOP)/.syl-conf-c-ares-1.15.0.lock /bin/sh
+conntrack/Makefile: SHELL := flock $(TOP)/.syl-conf-conntrack.lock /bin/sh
+coovachilli/Makefile: SHELL := flock $(TOP)/.syl-conf-coovachilli.lock /bin/sh
+coovachilliv16/Makefile: SHELL := flock $(TOP)/.syl-conf-coovachilliv16.lock /bin/sh
+curl/Makefile: SHELL := flock $(TOP)/.syl-conf-curl.lock /bin/sh
+curl/configure: SHELL := flock $(TOP)/.syl-conf-curl.lock /bin/sh
+db-4.8.30/build_unix/stamp-h1: SHELL := flock $(TOP)/.syl-conf-db-4.8.30.lock /bin/sh
+dbus-1.8.8/stamp-h1: SHELL := flock $(TOP)/.syl-conf-dbus-1.8.8.lock /bin/sh
+dropbear/config.h: SHELL := flock $(TOP)/.syl-conf-dropbear.lock /bin/sh
+dropbox_client/stamp-h1: SHELL := flock $(TOP)/.syl-conf-dropbox_client.lock /bin/sh
+e2fsprogs/Makefile: SHELL := flock $(TOP)/.syl-conf-e2fsprogs.lock /bin/sh
+ebtables-2.0.11/configure: SHELL := flock $(TOP)/.syl-conf-ebtables-2.0.11.lock /bin/sh
+ecmh/stamp-h1: SHELL := flock $(TOP)/.syl-conf-ecmh.lock /bin/sh
+email-3.1.3/Makefile: SHELL := flock $(TOP)/.syl-conf-email-3.1.3.lock /bin/sh
+ethtool-3.7/Makefile: SHELL := flock $(TOP)/.syl-conf-ethtool-3.7.lock /bin/sh
+ethtool-3.7/configure: SHELL := flock $(TOP)/.syl-conf-ethtool-3.7.lock /bin/sh
+ethtool-6.2/Makefile: SHELL := flock $(TOP)/.syl-conf-ethtool-6.2.lock /bin/sh
+ethtool-6.2/configure: SHELL := flock $(TOP)/.syl-conf-ethtool-6.2.lock /bin/sh
+expat-2.0.1/stamp-h1: SHELL := flock $(TOP)/.syl-conf-expat-2.0.1.lock /bin/sh
+fb_wifi/stamp-h1: SHELL := flock $(TOP)/.syl-conf-fb_wifi.lock /bin/sh
+ffmpeg/stamp-h1: SHELL := flock $(TOP)/.syl-conf-ffmpeg.lock /bin/sh
+flac/stamp-h1: SHELL := flock $(TOP)/.syl-conf-flac.lock /bin/sh
+ftpclient/stamp-h1: SHELL := flock $(TOP)/.syl-conf-ftpclient.lock /bin/sh
+gdb/Makefile: SHELL := flock $(TOP)/.syl-conf-gdb.lock /bin/sh
+getdns/build/Makefile: SHELL := flock $(TOP)/.syl-conf-getdns.lock /bin/sh
+glib-2.59.0/Makefile: SHELL := flock $(TOP)/.syl-conf-glib-2.59.0.lock /bin/sh
+glib-2.59.0/configure: SHELL := flock $(TOP)/.syl-conf-glib-2.59.0.lock /bin/sh
+google_client/stamp-h1: SHELL := flock $(TOP)/.syl-conf-google_client.lock /bin/sh
+haveged/Makefile: SHELL := flock $(TOP)/.syl-conf-haveged.lock /bin/sh
+hotplug-e2-helper/Makefile: SHELL := flock $(TOP)/.syl-conf-hotplug-e2-helper.lock /bin/sh
+igmpproxy/Makefile: SHELL := flock $(TOP)/.syl-conf-igmpproxy.lock /bin/sh
+inadyn/Makefile: SHELL := flock $(TOP)/.syl-conf-inadyn.lock /bin/sh
+inadyn/configure: SHELL := flock $(TOP)/.syl-conf-inadyn.lock /bin/sh
+ipaddr/stamp-h1: SHELL := flock $(TOP)/.syl-conf-ipaddr.lock /bin/sh
+ipset-6/stamp-h1: SHELL := flock $(TOP)/.syl-conf-ipset-6.lock /bin/sh
+ipset-7.6/Makefile: SHELL := flock $(TOP)/.syl-conf-ipset-7.6.lock /bin/sh
+ipset-7.6/configure: SHELL := flock $(TOP)/.syl-conf-ipset-7.6.lock /bin/sh
+iptables-1.4.18/Makefile: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.18.lock /bin/sh
+iptables-1.4.18/configure: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.18.lock /bin/sh
+iptables-1.4.18/remove_configure: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.18.lock /bin/sh
+iptables-1.4.21/Makefile: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.21.lock /bin/sh
+iptables-1.4.21/configure: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.21.lock /bin/sh
+iptables-1.4.21/remove_configure: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.21.lock /bin/sh
+iptables-1.4.x/Makefile: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.x.lock /bin/sh
+iptables-1.4.x/configure: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.x.lock /bin/sh
+iptables-1.8.10/Makefile: SHELL := flock $(TOP)/.syl-conf-iptables-1.8.10.lock /bin/sh
+iptables-1.8.10/configure: SHELL := flock $(TOP)/.syl-conf-iptables-1.8.10.lock /bin/sh
+jansson-2.7/Makefile: SHELL := flock $(TOP)/.syl-conf-jansson-2.7.lock /bin/sh
+jpeg/stamp-h1: SHELL := flock $(TOP)/.syl-conf-jpeg.lock /bin/sh
+json-c/stamp-h1: SHELL := flock $(TOP)/.syl-conf-json-c.lock /bin/sh
+libcap-ng/configure: SHELL := flock $(TOP)/.syl-conf-libcap-ng.lock /bin/sh
+libcbor-0.11/Makefile: SHELL := flock $(TOP)/.syl-conf-libcbor-0.11.lock /bin/sh
+libcodb/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libcodb.lock /bin/sh
+libconfuse/Makefile: SHELL := flock $(TOP)/.syl-conf-libconfuse.lock /bin/sh
+libdaemon/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libdaemon.lock /bin/sh
+libev-4.31/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libev-4.31.lock /bin/sh
+libev-4.33/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libev-4.33.lock /bin/sh
+libevent-2.0.21/Makefile: SHELL := flock $(TOP)/.syl-conf-libevent-2.0.21.lock /bin/sh
+libexif/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libexif.lock /bin/sh
+libffi-3.0.11/Makefile: SHELL := flock $(TOP)/.syl-conf-libffi-3.0.11.lock /bin/sh
+libgcrypt-1.5.1/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libgcrypt-1.5.1.lock /bin/sh
+libgdbm/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libgdbm.lock /bin/sh
+libgpg-error-1.10/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libgpg-error-1.10.lock /bin/sh
+libical-2.0.0/Makefile: SHELL := flock $(TOP)/.syl-conf-libical-2.0.0.lock /bin/sh
+libiconv-1.14/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libiconv-1.14.lock /bin/sh
+libid3tag/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libid3tag.lock /bin/sh
+libimobiledevice-1.3.0/Makefile: SHELL := flock $(TOP)/.syl-conf-libimobiledevice-1.3.0.lock /bin/sh
+libjwt/Makefile: SHELL := flock $(TOP)/.syl-conf-libjwt.lock /bin/sh
+libmnl-1.0.4/Makefile: SHELL := flock $(TOP)/.syl-conf-libmnl-1.0.4.lock /bin/sh
+libnetfilter_conntrack-1.0.7/Makefile: SHELL := flock $(TOP)/.syl-conf-libnetfilter_conntrack-1.0.7.lock /bin/sh
+libnetfilter_cttimeout-1.0.0/Makefile: SHELL := flock $(TOP)/.syl-conf-libnetfilter_cttimeout-1.0.0.lock /bin/sh
+libnetfilter_queue/Makefile: SHELL := flock $(TOP)/.syl-conf-libnetfilter_queue.lock /bin/sh
+libnss-mdns/Makefile: SHELL := flock $(TOP)/.syl-conf-libnss-mdns.lock /bin/sh
+libnss-mdns/configure: SHELL := flock $(TOP)/.syl-conf-libnss-mdns.lock /bin/sh
+libogg/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libogg.lock /bin/sh
+libpcap-1.9.1/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libpcap-1.9.1.lock /bin/sh
+libpcap/Makefile: SHELL := flock $(TOP)/.syl-conf-libpcap.lock /bin/sh
+libpcap/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libpcap.lock /bin/sh
+libplist-2.2.0/Makefile: SHELL := flock $(TOP)/.syl-conf-libplist-2.2.0.lock /bin/sh
+libpng/build/Makefile: SHELL := flock $(TOP)/.syl-conf-libpng.lock /bin/sh
+libssh2/Makefile: SHELL := flock $(TOP)/.syl-conf-libssh2.lock /bin/sh
+libuci/Makefile: SHELL := flock $(TOP)/.syl-conf-libuci.lock /bin/sh
+libupnp-1.3.1/Makefile: SHELL := flock $(TOP)/.syl-conf-libupnp-1.3.1.lock /bin/sh
+libusb-0.1.12/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libusb-0.1.12.lock /bin/sh
+libusb/Makefile: SHELL := flock $(TOP)/.syl-conf-libusb.lock /bin/sh
+libusb10/Makefile: SHELL := flock $(TOP)/.syl-conf-libusb10.lock /bin/sh
+libusbmuxd-2.0.2/Makefile: SHELL := flock $(TOP)/.syl-conf-libusbmuxd-2.0.2.lock /bin/sh
+libvorbis/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libvorbis.lock /bin/sh
+libwebapi/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libwebapi.lock /bin/sh
+libxml2/stamp-h1: SHELL := flock $(TOP)/.syl-conf-libxml2.lock /bin/sh
+libyaml/configure: SHELL := flock $(TOP)/.syl-conf-libyaml.lock /bin/sh
+lighttpd-1.4.39/Makefile: SHELL := flock $(TOP)/.syl-conf-lighttpd-1.4.39.lock /bin/sh
+lighttpd-1.4.39/stamp-h1: SHELL := flock $(TOP)/.syl-conf-lighttpd-1.4.39.lock /bin/sh
+linux-ntfs-2.0.0/stamp-h1: SHELL := flock $(TOP)/.syl-conf-linux-ntfs-2.0.0.lock /bin/sh
+lldpd-0.9.8/Makefile: SHELL := flock $(TOP)/.syl-conf-lldpd-0.9.8.lock /bin/sh
+lldpd-1.0.11/Makefile: SHELL := flock $(TOP)/.syl-conf-lldpd-1.0.11.lock /bin/sh
+minidlna/configure: SHELL := flock $(TOP)/.syl-conf-minidlna.lock /bin/sh
+miniupnpd/config.h: SHELL := flock $(TOP)/.syl-conf-miniupnpd.lock /bin/sh
+mosquitto-1.6.8/stamp-h1: SHELL := flock $(TOP)/.syl-conf-mosquitto-1.6.8.lock /bin/sh
+mt-daapd-svn-1696/stamp-h1: SHELL := flock $(TOP)/.syl-conf-mt-daapd-svn-1696.lock /bin/sh
+mxml-3.1/stamp-h1: SHELL := flock $(TOP)/.syl-conf-mxml-3.1.lock /bin/sh
+nano/Makefile: SHELL := flock $(TOP)/.syl-conf-nano.lock /bin/sh
+ncurses-6.1/Makefile: SHELL := flock $(TOP)/.syl-conf-ncurses-6.1.lock /bin/sh
+ncurses-6.3/Makefile: SHELL := flock $(TOP)/.syl-conf-ncurses-6.3.lock /bin/sh
+ndisc6/stamp-h1: SHELL := flock $(TOP)/.syl-conf-ndisc6.lock /bin/sh
+net-snmp-5.7.2/stamp-h1: SHELL := flock $(TOP)/.syl-conf-net-snmp-5.7.2.lock /bin/sh
+nettle/stamp-h1: SHELL := flock $(TOP)/.syl-conf-nettle.lock /bin/sh
+nfcm/stamp-h1: SHELL := flock $(TOP)/.syl-conf-nfcm.lock /bin/sh
+nfs-utils-1.3.4/stamp-h1: SHELL := flock $(TOP)/.syl-conf-nfs-utils-1.3.4.lock /bin/sh
+nfs-utils/stamp-h1: SHELL := flock $(TOP)/.syl-conf-nfs-utils.lock /bin/sh
+nt_center/stamp-h1: SHELL := flock $(TOP)/.syl-conf-nt_center.lock /bin/sh
+ntfs-3g-2016.2.22/stamp-h1: SHELL := flock $(TOP)/.syl-conf-ntfs-3g-2016.2.22.lock /bin/sh
+ntfs-3g/stamp-h1: SHELL := flock $(TOP)/.syl-conf-ntfs-3g.lock /bin/sh
+ntp-4.2.8p15/Makefile: SHELL := flock $(TOP)/.syl-conf-ntp-4.2.8p15.lock /bin/sh
+openlldp/Makefile: SHELL := flock $(TOP)/.syl-conf-openlldp.lock /bin/sh
+openpam/Makefile: SHELL := flock $(TOP)/.syl-conf-openpam.lock /bin/sh
+openssl-1.0/Makefile: SHELL := flock $(TOP)/.syl-conf-openssl-1.0.lock /bin/sh
+openssl-1.1/Makefile: SHELL := flock $(TOP)/.syl-conf-openssl-1.1.lock /bin/sh
+opensync-1.4.0/stamp-h1: SHELL := flock $(TOP)/.syl-conf-opensync-1.4.0.lock /bin/sh
+openvpn/Makefile: SHELL := flock $(TOP)/.syl-conf-openvpn.lock /bin/sh
+openvswitch-2.12.0/stamp-h1: SHELL := flock $(TOP)/.syl-conf-openvswitch-2.12.0.lock /bin/sh
+pcre-8.12/stamp-h1: SHELL := flock $(TOP)/.syl-conf-pcre-8.12.lock /bin/sh
+pcre-8.31/stamp-h1: SHELL := flock $(TOP)/.syl-conf-pcre-8.31.lock /bin/sh
+phddns/stamp-h1: SHELL := flock $(TOP)/.syl-conf-phddns.lock /bin/sh
+pppd/stamp-h1: SHELL := flock $(TOP)/.syl-conf-pppd.lock /bin/sh
+pptpd/stamp-h1: SHELL := flock $(TOP)/.syl-conf-pptpd.lock /bin/sh
+protect_srv/stamp-h1: SHELL := flock $(TOP)/.syl-conf-protect_srv.lock /bin/sh
+protobuf-3.11.3/stamp-h1: SHELL := flock $(TOP)/.syl-conf-protobuf-3.11.3.lock /bin/sh
+protobuf-c-1.3.2/stamp-h1: SHELL := flock $(TOP)/.syl-conf-protobuf-c-1.3.2.lock /bin/sh
+pstree/stamp-h1: SHELL := flock $(TOP)/.syl-conf-pstree.lock /bin/sh
+qca-wifi-fw-qca9888/stamp-h1: SHELL := flock $(TOP)/.syl-conf-qca-wifi-fw-qca9888.lock /bin/sh
+qrencode/build/Makefile: SHELL := flock $(TOP)/.syl-conf-qrencode.lock /bin/sh
+quagga/stamp-h1: SHELL := flock $(TOP)/.syl-conf-quagga.lock /bin/sh
+readline-6.2/Makefile: SHELL := flock $(TOP)/.syl-conf-readline-6.2.lock /bin/sh
+rp-l2tp/stamp-h1: SHELL := flock $(TOP)/.syl-conf-rp-l2tp.lock /bin/sh
+rp-pppoe/src/stamp-h1: SHELL := flock $(TOP)/.syl-conf-rp-pppoe.lock /bin/sh
+sambaclient/stamp-h1: SHELL := flock $(TOP)/.syl-conf-sambaclient.lock /bin/sh
+sdparm-1.02/Makefile: SHELL := flock $(TOP)/.syl-conf-sdparm-1.02.lock /bin/sh
+sdparm-1.02/configure: SHELL := flock $(TOP)/.syl-conf-sdparm-1.02.lock /bin/sh
+socat/Makefile: SHELL := flock $(TOP)/.syl-conf-socat.lock /bin/sh
+sqlCipher/stamp-h1: SHELL := flock $(TOP)/.syl-conf-sqlCipher.lock /bin/sh
+sqlite/Makefile: SHELL := flock $(TOP)/.syl-conf-sqlite.lock /bin/sh
+sqlite3/stamp-h1: SHELL := flock $(TOP)/.syl-conf-sqlite3.lock /bin/sh
+strongswan/Makefile: SHELL := flock $(TOP)/.syl-conf-strongswan.lock /bin/sh
+strongswan/configure: SHELL := flock $(TOP)/.syl-conf-strongswan.lock /bin/sh
+talloc-2.1.1/stamp-h1: SHELL := flock $(TOP)/.syl-conf-talloc-2.1.1.lock /bin/sh
+tcpdump-4.4.0/Makefile: SHELL := flock $(TOP)/.syl-conf-tcpdump-4.4.0.lock /bin/sh
+termcap/Makefile: SHELL := flock $(TOP)/.syl-conf-termcap.lock /bin/sh
+tor/Makefile: SHELL := flock $(TOP)/.syl-conf-tor.lock /bin/sh
+traceroute-2.1.0/stamp-h1: SHELL := flock $(TOP)/.syl-conf-traceroute-2.1.0.lock /bin/sh
+udev-173/Makefile: SHELL := flock $(TOP)/.syl-conf-udev-173.lock /bin/sh
+udev-173/configure: SHELL := flock $(TOP)/.syl-conf-udev-173.lock /bin/sh
+uploader/Makefile: SHELL := flock $(TOP)/.syl-conf-uploader.lock /bin/sh
+usbclient/stamp-h1: SHELL := flock $(TOP)/.syl-conf-usbclient.lock /bin/sh
+usbmode/stamp-h1: SHELL := flock $(TOP)/.syl-conf-usbmode.lock /bin/sh
+usbmuxd-1.1.1/Makefile: SHELL := flock $(TOP)/.syl-conf-usbmuxd-1.1.1.lock /bin/sh
+util-linux/Makefile: SHELL := flock $(TOP)/.syl-conf-util-linux.lock /bin/sh
+util-linux/configure: SHELL := flock $(TOP)/.syl-conf-util-linux.lock /bin/sh
+webdav_client/stamp-h1: SHELL := flock $(TOP)/.syl-conf-webdav_client.lock /bin/sh
+wget/Makefile: SHELL := flock $(TOP)/.syl-conf-wget.lock /bin/sh
+wolfssl/Makefile: SHELL := flock $(TOP)/.syl-conf-wolfssl.lock /bin/sh
+zebra/stamp-h1: SHELL := flock $(TOP)/.syl-conf-zebra.lock /bin/sh
+zlib/stamp-h1: SHELL := flock $(TOP)/.syl-conf-zlib.lock /bin/sh
+GeoIP-1.6.2: SHELL := flock $(TOP)/.syl-conf-GeoIP-1.6.2.lock /bin/sh
+PMS_DBapis: SHELL := flock $(TOP)/.syl-conf-PMS_DBapis.lock /bin/sh
+accel-pptp: SHELL := flock $(TOP)/.syl-conf-accel-pptp.lock /bin/sh
+accel-pptpd: SHELL := flock $(TOP)/.syl-conf-accel-pptpd.lock /bin/sh
+asuswebstorage: SHELL := flock $(TOP)/.syl-conf-asuswebstorage.lock /bin/sh
+avahi: SHELL := flock $(TOP)/.syl-conf-avahi.lock /bin/sh
+avahi-0.6.31: SHELL := flock $(TOP)/.syl-conf-avahi-0.6.31.lock /bin/sh
+aws-iot: SHELL := flock $(TOP)/.syl-conf-aws-iot.lock /bin/sh
+bluez-5.56: SHELL := flock $(TOP)/.syl-conf-bluez-5.56.lock /bin/sh
+bridge: SHELL := flock $(TOP)/.syl-conf-bridge.lock /bin/sh
+c-ares-1.15.0: SHELL := flock $(TOP)/.syl-conf-c-ares-1.15.0.lock /bin/sh
+conntrack: SHELL := flock $(TOP)/.syl-conf-conntrack.lock /bin/sh
+coovachilli: SHELL := flock $(TOP)/.syl-conf-coovachilli.lock /bin/sh
+coovachilliv16: SHELL := flock $(TOP)/.syl-conf-coovachilliv16.lock /bin/sh
+curl: SHELL := flock $(TOP)/.syl-conf-curl.lock /bin/sh
+db-4.8.30: SHELL := flock $(TOP)/.syl-conf-db-4.8.30.lock /bin/sh
+dbus-1.8.8: SHELL := flock $(TOP)/.syl-conf-dbus-1.8.8.lock /bin/sh
+dropbear: SHELL := flock $(TOP)/.syl-conf-dropbear.lock /bin/sh
+dropbox_client: SHELL := flock $(TOP)/.syl-conf-dropbox_client.lock /bin/sh
+e2fsprogs: SHELL := flock $(TOP)/.syl-conf-e2fsprogs.lock /bin/sh
+ebtables-2.0.11: SHELL := flock $(TOP)/.syl-conf-ebtables-2.0.11.lock /bin/sh
+ecmh: SHELL := flock $(TOP)/.syl-conf-ecmh.lock /bin/sh
+email-3.1.3: SHELL := flock $(TOP)/.syl-conf-email-3.1.3.lock /bin/sh
+ethtool-3.7: SHELL := flock $(TOP)/.syl-conf-ethtool-3.7.lock /bin/sh
+ethtool-6.2: SHELL := flock $(TOP)/.syl-conf-ethtool-6.2.lock /bin/sh
+expat-2.0.1: SHELL := flock $(TOP)/.syl-conf-expat-2.0.1.lock /bin/sh
+fb_wifi: SHELL := flock $(TOP)/.syl-conf-fb_wifi.lock /bin/sh
+ffmpeg: SHELL := flock $(TOP)/.syl-conf-ffmpeg.lock /bin/sh
+flac: SHELL := flock $(TOP)/.syl-conf-flac.lock /bin/sh
+ftpclient: SHELL := flock $(TOP)/.syl-conf-ftpclient.lock /bin/sh
+gdb: SHELL := flock $(TOP)/.syl-conf-gdb.lock /bin/sh
+getdns: SHELL := flock $(TOP)/.syl-conf-getdns.lock /bin/sh
+glib-2.59.0: SHELL := flock $(TOP)/.syl-conf-glib-2.59.0.lock /bin/sh
+google_client: SHELL := flock $(TOP)/.syl-conf-google_client.lock /bin/sh
+haveged: SHELL := flock $(TOP)/.syl-conf-haveged.lock /bin/sh
+hotplug-e2-helper: SHELL := flock $(TOP)/.syl-conf-hotplug-e2-helper.lock /bin/sh
+igmpproxy: SHELL := flock $(TOP)/.syl-conf-igmpproxy.lock /bin/sh
+inadyn: SHELL := flock $(TOP)/.syl-conf-inadyn.lock /bin/sh
+ipaddr: SHELL := flock $(TOP)/.syl-conf-ipaddr.lock /bin/sh
+ipset-6: SHELL := flock $(TOP)/.syl-conf-ipset-6.lock /bin/sh
+ipset-7.6: SHELL := flock $(TOP)/.syl-conf-ipset-7.6.lock /bin/sh
+iptables-1.4.18: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.18.lock /bin/sh
+iptables-1.4.21: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.21.lock /bin/sh
+iptables-1.4.x: SHELL := flock $(TOP)/.syl-conf-iptables-1.4.x.lock /bin/sh
+iptables-1.8.10: SHELL := flock $(TOP)/.syl-conf-iptables-1.8.10.lock /bin/sh
+jansson-2.7: SHELL := flock $(TOP)/.syl-conf-jansson-2.7.lock /bin/sh
+jpeg: SHELL := flock $(TOP)/.syl-conf-jpeg.lock /bin/sh
+json-c: SHELL := flock $(TOP)/.syl-conf-json-c.lock /bin/sh
+libcap-ng: SHELL := flock $(TOP)/.syl-conf-libcap-ng.lock /bin/sh
+libcbor-0.11: SHELL := flock $(TOP)/.syl-conf-libcbor-0.11.lock /bin/sh
+libcodb: SHELL := flock $(TOP)/.syl-conf-libcodb.lock /bin/sh
+libconfuse: SHELL := flock $(TOP)/.syl-conf-libconfuse.lock /bin/sh
+libdaemon: SHELL := flock $(TOP)/.syl-conf-libdaemon.lock /bin/sh
+libev-4.31: SHELL := flock $(TOP)/.syl-conf-libev-4.31.lock /bin/sh
+libev-4.33: SHELL := flock $(TOP)/.syl-conf-libev-4.33.lock /bin/sh
+libevent-2.0.21: SHELL := flock $(TOP)/.syl-conf-libevent-2.0.21.lock /bin/sh
+libexif: SHELL := flock $(TOP)/.syl-conf-libexif.lock /bin/sh
+libffi-3.0.11: SHELL := flock $(TOP)/.syl-conf-libffi-3.0.11.lock /bin/sh
+libgcrypt-1.5.1: SHELL := flock $(TOP)/.syl-conf-libgcrypt-1.5.1.lock /bin/sh
+libgdbm: SHELL := flock $(TOP)/.syl-conf-libgdbm.lock /bin/sh
+libgpg-error-1.10: SHELL := flock $(TOP)/.syl-conf-libgpg-error-1.10.lock /bin/sh
+libical-2.0.0: SHELL := flock $(TOP)/.syl-conf-libical-2.0.0.lock /bin/sh
+libiconv-1.14: SHELL := flock $(TOP)/.syl-conf-libiconv-1.14.lock /bin/sh
+libid3tag: SHELL := flock $(TOP)/.syl-conf-libid3tag.lock /bin/sh
+libimobiledevice-1.3.0: SHELL := flock $(TOP)/.syl-conf-libimobiledevice-1.3.0.lock /bin/sh
+libjwt: SHELL := flock $(TOP)/.syl-conf-libjwt.lock /bin/sh
+libmnl-1.0.4: SHELL := flock $(TOP)/.syl-conf-libmnl-1.0.4.lock /bin/sh
+libnetfilter_conntrack-1.0.7: SHELL := flock $(TOP)/.syl-conf-libnetfilter_conntrack-1.0.7.lock /bin/sh
+libnetfilter_cttimeout-1.0.0: SHELL := flock $(TOP)/.syl-conf-libnetfilter_cttimeout-1.0.0.lock /bin/sh
+libnetfilter_queue: SHELL := flock $(TOP)/.syl-conf-libnetfilter_queue.lock /bin/sh
+libnss-mdns: SHELL := flock $(TOP)/.syl-conf-libnss-mdns.lock /bin/sh
+libogg: SHELL := flock $(TOP)/.syl-conf-libogg.lock /bin/sh
+libpcap: SHELL := flock $(TOP)/.syl-conf-libpcap.lock /bin/sh
+libpcap-1.9.1: SHELL := flock $(TOP)/.syl-conf-libpcap-1.9.1.lock /bin/sh
+libplist-2.2.0: SHELL := flock $(TOP)/.syl-conf-libplist-2.2.0.lock /bin/sh
+libpng: SHELL := flock $(TOP)/.syl-conf-libpng.lock /bin/sh
+libssh2: SHELL := flock $(TOP)/.syl-conf-libssh2.lock /bin/sh
+libuci: SHELL := flock $(TOP)/.syl-conf-libuci.lock /bin/sh
+libupnp-1.3.1: SHELL := flock $(TOP)/.syl-conf-libupnp-1.3.1.lock /bin/sh
+libusb: SHELL := flock $(TOP)/.syl-conf-libusb.lock /bin/sh
+libusb-0.1.12: SHELL := flock $(TOP)/.syl-conf-libusb-0.1.12.lock /bin/sh
+libusb10: SHELL := flock $(TOP)/.syl-conf-libusb10.lock /bin/sh
+libusbmuxd-2.0.2: SHELL := flock $(TOP)/.syl-conf-libusbmuxd-2.0.2.lock /bin/sh
+libvorbis: SHELL := flock $(TOP)/.syl-conf-libvorbis.lock /bin/sh
+libwebapi: SHELL := flock $(TOP)/.syl-conf-libwebapi.lock /bin/sh
+libxml2: SHELL := flock $(TOP)/.syl-conf-libxml2.lock /bin/sh
+libyaml: SHELL := flock $(TOP)/.syl-conf-libyaml.lock /bin/sh
+lighttpd-1.4.39: SHELL := flock $(TOP)/.syl-conf-lighttpd-1.4.39.lock /bin/sh
+linux-ntfs-2.0.0: SHELL := flock $(TOP)/.syl-conf-linux-ntfs-2.0.0.lock /bin/sh
+lldpd-0.9.8: SHELL := flock $(TOP)/.syl-conf-lldpd-0.9.8.lock /bin/sh
+lldpd-1.0.11: SHELL := flock $(TOP)/.syl-conf-lldpd-1.0.11.lock /bin/sh
+minidlna: SHELL := flock $(TOP)/.syl-conf-minidlna.lock /bin/sh
+miniupnpd: SHELL := flock $(TOP)/.syl-conf-miniupnpd.lock /bin/sh
+mosquitto-1.6.8: SHELL := flock $(TOP)/.syl-conf-mosquitto-1.6.8.lock /bin/sh
+mt-daapd-svn-1696: SHELL := flock $(TOP)/.syl-conf-mt-daapd-svn-1696.lock /bin/sh
+mxml-3.1: SHELL := flock $(TOP)/.syl-conf-mxml-3.1.lock /bin/sh
+nano: SHELL := flock $(TOP)/.syl-conf-nano.lock /bin/sh
+ncurses-6.1: SHELL := flock $(TOP)/.syl-conf-ncurses-6.1.lock /bin/sh
+ncurses-6.3: SHELL := flock $(TOP)/.syl-conf-ncurses-6.3.lock /bin/sh
+ndisc6: SHELL := flock $(TOP)/.syl-conf-ndisc6.lock /bin/sh
+net-snmp-5.7.2: SHELL := flock $(TOP)/.syl-conf-net-snmp-5.7.2.lock /bin/sh
+nettle: SHELL := flock $(TOP)/.syl-conf-nettle.lock /bin/sh
+nfcm: SHELL := flock $(TOP)/.syl-conf-nfcm.lock /bin/sh
+nfs-utils: SHELL := flock $(TOP)/.syl-conf-nfs-utils.lock /bin/sh
+nfs-utils-1.3.4: SHELL := flock $(TOP)/.syl-conf-nfs-utils-1.3.4.lock /bin/sh
+nt_center: SHELL := flock $(TOP)/.syl-conf-nt_center.lock /bin/sh
+ntfs-3g: SHELL := flock $(TOP)/.syl-conf-ntfs-3g.lock /bin/sh
+ntfs-3g-2016.2.22: SHELL := flock $(TOP)/.syl-conf-ntfs-3g-2016.2.22.lock /bin/sh
+ntp-4.2.8p15: SHELL := flock $(TOP)/.syl-conf-ntp-4.2.8p15.lock /bin/sh
+openlldp: SHELL := flock $(TOP)/.syl-conf-openlldp.lock /bin/sh
+openpam: SHELL := flock $(TOP)/.syl-conf-openpam.lock /bin/sh
+openssl-1.0: SHELL := flock $(TOP)/.syl-conf-openssl-1.0.lock /bin/sh
+openssl-1.1: SHELL := flock $(TOP)/.syl-conf-openssl-1.1.lock /bin/sh
+opensync-1.4.0: SHELL := flock $(TOP)/.syl-conf-opensync-1.4.0.lock /bin/sh
+openvpn: SHELL := flock $(TOP)/.syl-conf-openvpn.lock /bin/sh
+openvswitch-2.12.0: SHELL := flock $(TOP)/.syl-conf-openvswitch-2.12.0.lock /bin/sh
+pcre-8.12: SHELL := flock $(TOP)/.syl-conf-pcre-8.12.lock /bin/sh
+pcre-8.31: SHELL := flock $(TOP)/.syl-conf-pcre-8.31.lock /bin/sh
+phddns: SHELL := flock $(TOP)/.syl-conf-phddns.lock /bin/sh
+pppd: SHELL := flock $(TOP)/.syl-conf-pppd.lock /bin/sh
+pptpd: SHELL := flock $(TOP)/.syl-conf-pptpd.lock /bin/sh
+protect_srv: SHELL := flock $(TOP)/.syl-conf-protect_srv.lock /bin/sh
+protobuf-3.11.3: SHELL := flock $(TOP)/.syl-conf-protobuf-3.11.3.lock /bin/sh
+protobuf-c-1.3.2: SHELL := flock $(TOP)/.syl-conf-protobuf-c-1.3.2.lock /bin/sh
+pstree: SHELL := flock $(TOP)/.syl-conf-pstree.lock /bin/sh
+qca-wifi-fw-qca9888: SHELL := flock $(TOP)/.syl-conf-qca-wifi-fw-qca9888.lock /bin/sh
+qrencode: SHELL := flock $(TOP)/.syl-conf-qrencode.lock /bin/sh
+quagga: SHELL := flock $(TOP)/.syl-conf-quagga.lock /bin/sh
+readline-6.2: SHELL := flock $(TOP)/.syl-conf-readline-6.2.lock /bin/sh
+rp-l2tp: SHELL := flock $(TOP)/.syl-conf-rp-l2tp.lock /bin/sh
+rp-pppoe: SHELL := flock $(TOP)/.syl-conf-rp-pppoe.lock /bin/sh
+sambaclient: SHELL := flock $(TOP)/.syl-conf-sambaclient.lock /bin/sh
+sdparm-1.02: SHELL := flock $(TOP)/.syl-conf-sdparm-1.02.lock /bin/sh
+socat: SHELL := flock $(TOP)/.syl-conf-socat.lock /bin/sh
+sqlCipher: SHELL := flock $(TOP)/.syl-conf-sqlCipher.lock /bin/sh
+sqlite: SHELL := flock $(TOP)/.syl-conf-sqlite.lock /bin/sh
+sqlite3: SHELL := flock $(TOP)/.syl-conf-sqlite3.lock /bin/sh
+strongswan: SHELL := flock $(TOP)/.syl-conf-strongswan.lock /bin/sh
+talloc-2.1.1: SHELL := flock $(TOP)/.syl-conf-talloc-2.1.1.lock /bin/sh
+tcpdump-4.4.0: SHELL := flock $(TOP)/.syl-conf-tcpdump-4.4.0.lock /bin/sh
+termcap: SHELL := flock $(TOP)/.syl-conf-termcap.lock /bin/sh
+tor: SHELL := flock $(TOP)/.syl-conf-tor.lock /bin/sh
+traceroute-2.1.0: SHELL := flock $(TOP)/.syl-conf-traceroute-2.1.0.lock /bin/sh
+udev-173: SHELL := flock $(TOP)/.syl-conf-udev-173.lock /bin/sh
+uploader: SHELL := flock $(TOP)/.syl-conf-uploader.lock /bin/sh
+usbclient: SHELL := flock $(TOP)/.syl-conf-usbclient.lock /bin/sh
+usbmode: SHELL := flock $(TOP)/.syl-conf-usbmode.lock /bin/sh
+usbmuxd-1.1.1: SHELL := flock $(TOP)/.syl-conf-usbmuxd-1.1.1.lock /bin/sh
+util-linux: SHELL := flock $(TOP)/.syl-conf-util-linux.lock /bin/sh
+webdav_client: SHELL := flock $(TOP)/.syl-conf-webdav_client.lock /bin/sh
+wget: SHELL := flock $(TOP)/.syl-conf-wget.lock /bin/sh
+wolfssl: SHELL := flock $(TOP)/.syl-conf-wolfssl.lock /bin/sh
+zebra: SHELL := flock $(TOP)/.syl-conf-zebra.lock /bin/sh
+zlib: SHELL := flock $(TOP)/.syl-conf-zlib.lock /bin/sh
+
+
 .PHONY: all clean distclean mrproper install package image
 .PHONY: conf mconf oldconf kconf kmconf config menuconfig oldconfig
 .PHONY: dummy libnet libpcap

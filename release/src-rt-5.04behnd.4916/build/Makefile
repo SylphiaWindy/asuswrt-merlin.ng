@@ -385,6 +385,14 @@ endif
 
 .PHONY: prepare_userspace userspace
 
+# ===== 顶层阶段顺序（自建，非上游）=====
+# kernelbuild 与 userspace 共享 targets/<profile>/fs.install，且上游未声明顺序。
+# -j 下并发时：内核侧 phy 往 fs.install/etc/fw 装固件，userspace 的 clean-build
+# 同时 rm -rf 掉它 → cp: target '.../etc/fw' is not a directory。
+# 按实测串行顺序（kernelbuild 在前）加 order-only 约束。
+SYL_PHASE_ORDER := 1
+userspace: | kernelbuild
+
 
 
 # TODO begin: building userspace with OVS is special where userspace still depends on kernelspace.
