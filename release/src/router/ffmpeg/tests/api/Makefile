@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 APITESTPROGS-$(call ENCDEC, FLAC, FLAC) += api-flac
 APITESTPROGS-$(call DEMDEC, H264, H264) += api-h264
 APITESTPROGS-$(call DEMDEC, H264, H264) += api-h264-slice

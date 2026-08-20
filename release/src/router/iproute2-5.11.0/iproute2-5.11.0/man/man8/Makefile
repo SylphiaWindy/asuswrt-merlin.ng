@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 # SPDX-License-Identifier: GPL-2.0
 TARGETS = ip-address.8 ip-link.8 ip-netns.8 ip-route.8
 

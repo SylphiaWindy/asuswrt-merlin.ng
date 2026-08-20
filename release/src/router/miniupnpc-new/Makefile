@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 # $Id: Makefile,v 1.143 2020/11/27 18:20:32 nanard Exp $
 # MiniUPnP Project
 # http://miniupnp.free.fr/

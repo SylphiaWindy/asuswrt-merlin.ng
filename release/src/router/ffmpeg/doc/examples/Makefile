@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 EXAMPLES-$(CONFIG_AVIO_LIST_DIR_EXAMPLE)     += avio_list_dir
 EXAMPLES-$(CONFIG_AVIO_READING_EXAMPLE)      += avio_reading
 EXAMPLES-$(CONFIG_DECODE_AUDIO_EXAMPLE)      += decode_audio

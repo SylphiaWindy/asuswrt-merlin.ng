@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 PSFILES=ip-cref.ps ip-tunnels.ps api-ip6-flowlabels.ps ss.ps nstat.ps arpd.ps rtstat.ps
 # tc-cref.ps
 # api-rtnl.tex api-pmtudisc.tex api-news.tex

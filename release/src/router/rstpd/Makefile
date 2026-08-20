@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 
 DSOURCES =  brstate.c libnetlink.c epoll_loop.c bridge_track.c \
 	   packet.c ctl_socket.c netif_utils.c main.c brmon.c

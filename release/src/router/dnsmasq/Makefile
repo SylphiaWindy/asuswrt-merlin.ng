@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 # dnsmasq is Copyright (c) 2000-2026 Simon Kelley
 #
 #  This program is free software; you can redistribute it and/or modify

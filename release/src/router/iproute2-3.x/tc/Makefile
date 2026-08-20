@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 TCOBJ= tc.o tc_qdisc.o tc_class.o tc_filter.o tc_util.o \
        tc_monitor.o m_police.o m_estimator.o m_action.o \
        m_ematch.o emp_ematch.yacc.o emp_ematch.lex.o

@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 #
 # Build a pkg for Solaris
 # Makefile,v 1.3 2000/05/10 18:33:26 papowell Exp

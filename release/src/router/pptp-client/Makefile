@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 # $Id: Makefile,v 1.40 2006/02/13 03:06:25 quozl Exp $
 VERSION=1.7.1
 RELEASE=

@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 # @(#) $Header: /ramdisk/repositories/20_cvs_clean_up/2011-02-11_sj/src/router/flex/Makefile.in,v 1.2 2001-08-09 21:22:13 gmo Exp $ (LBL)
 
 

@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 # Copyright 1992-1996 by Jutta Degener and Carsten Bormann, Technische
 # Universitaet Berlin.  See the accompanying file "COPYRIGHT" for
 # details.  THERE IS ABSOLUTELY NO WARRANTY FOR THIS SOFTWARE.

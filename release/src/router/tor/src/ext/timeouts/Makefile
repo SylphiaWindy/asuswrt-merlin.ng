@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 # NOTE: GNU Make 3.81 won't export MAKEFLAGS if .POSIX is specified, but
 # Solaris make won't export MAKEFLAGS unless .POSIX is specified.
 $(firstword ignore).POSIX:

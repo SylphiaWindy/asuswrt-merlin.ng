@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 # subsystems
 OBJS-$(CONFIG_FFT)                      += aarch64/fft_init_aarch64.o
 OBJS-$(CONFIG_FMTCONVERT)               += aarch64/fmtconvert_init.o

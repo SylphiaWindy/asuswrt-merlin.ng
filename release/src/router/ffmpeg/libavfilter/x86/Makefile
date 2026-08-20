@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 OBJS-$(CONFIG_SCENE_SAD)                     += x86/scene_sad_init.o
 
 OBJS-$(CONFIG_AFIR_FILTER)                   += x86/af_afir_init.o

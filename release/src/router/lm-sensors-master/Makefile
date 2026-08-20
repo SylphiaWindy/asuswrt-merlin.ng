@@ -1,3 +1,6 @@
+# 自建：该 Makefile 是手写的、不是 -j 安全的，却继承顶层 -j24。
+# 包内串行，包间并行不受影响。
+.NOTPARALLEL:
 #  Makefile - Makefile for a Linux module for reading sensor data.
 #  Copyright (c) 1998, 1999  Frodo Looijaard <frodol@dds.nl>
 #
